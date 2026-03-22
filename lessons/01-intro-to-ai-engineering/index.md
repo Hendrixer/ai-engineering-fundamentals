@@ -286,7 +286,7 @@ npm install
 
 ### 2. Set up your API key
 
-Copy the example environment file and add your Anthropic API key:
+Copy the example environment file and add your OpenAI API key:
 
 ```bash
 cp .dev.vars.example .dev.vars
@@ -295,10 +295,10 @@ cp .dev.vars.example .dev.vars
 Then open `.dev.vars` and replace the placeholder with your actual key:
 
 ```
-ANTHROPIC_API_KEY=sk-ant-your-actual-key-here
+OPENAI_API_KEY=sk-your-openai-key-here
 ```
 
-You can get an API key at [console.anthropic.com](https://console.anthropic.com).
+You can get an API key at [platform.openai.com](https://platform.openai.com).
 
 ### 3. Start the development server
 
