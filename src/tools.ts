@@ -61,34 +61,42 @@ export const tools = {
 
   modifyDiagram: tool({
     description:
-      "Modify an existing element on the canvas by id. Set only the fields you want to change; everything else is left alone. Use this for tweaks like recolor, rename, move, resize, restyle. The element id must come from the current canvas state.",
+      "Modify an existing element on the canvas by id. Pass null for any field you don't want to change. The element id must come from the current canvas state.",
     inputSchema: z.object({
       elementId: z.string().describe("The id of the element to modify"),
-      // Explicit field list rather than a free form record. OpenAI's strict
-      // tool calling rejects unconstrained additionalProperties, and giving
-      // the model an enumerated list also tells it exactly what's tweakable.
+      // Every field is nullable rather than optional. OpenAI's strict tool
+      // calling mode requires every property in `properties` to also be in
+      // `required` — optional fields are rejected. Nullable fields satisfy
+      // strict mode (they're required, but the value can be null), and the
+      // model passes null for fields it doesn't want to change. We strip
+      // nulls before applying the merge on the client.
       updates: z
         .object({
-          x: z.number().optional().describe("New x position"),
-          y: z.number().optional().describe("New y position"),
-          width: z.number().optional().describe("New width"),
-          height: z.number().optional().describe("New height"),
-          text: z.string().optional().describe("New label or text content"),
-          fontSize: z.number().optional(),
-          textAlign: z.enum(["left", "center", "right"]).optional(),
-          strokeColor: z.string().optional().describe("Hex stroke color"),
-          backgroundColor: z.string().optional().describe("Hex fill color"),
-          fillStyle: z.enum(["solid", "hachure", "cross-hatch"]).optional(),
-          strokeWidth: z.number().optional(),
-          roughness: z.number().optional(),
-          opacity: z.number().optional(),
+          x: z.number().nullable().describe("New x position, or null"),
+          y: z.number().nullable().describe("New y position, or null"),
+          width: z.number().nullable().describe("New width, or null"),
+          height: z.number().nullable().describe("New height, or null"),
+          text: z.string().nullable().describe("New label or text content, or null"),
+          fontSize: z.number().nullable(),
+          textAlign: z.enum(["left", "center", "right"]).nullable(),
+          strokeColor: z.string().nullable().describe("Hex stroke color, or null"),
+          backgroundColor: z.string().nullable().describe("Hex fill color, or null"),
+          fillStyle: z.enum(["solid", "hachure", "cross-hatch"]).nullable(),
+          strokeWidth: z.number().nullable(),
+          roughness: z.number().nullable(),
+          opacity: z.number().nullable(),
         })
-        .describe("Fields to change. Omit anything you don't want to touch."),
+        .describe("Fields to change. Set any field you don't want to touch to null."),
     }),
     execute: async ({ elementId, updates }) => {
-      // Pass through. The client merges the updates into the existing element
-      // via the Excalidraw API.
-      return { elementId, updates };
+      // Filter out null fields so the client only sees what should actually
+      // change. Without this, a null field would overwrite the live value
+      // with null and break the element.
+      const filtered: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(updates)) {
+        if (value !== null) filtered[key] = value;
+      }
+      return { elementId, updates: filtered };
     },
   }),
 };

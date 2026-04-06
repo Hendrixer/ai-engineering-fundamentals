@@ -37,11 +37,6 @@ export class DesignAgent extends AIChatAgent<Env> {
       messages: await convertToModelMessages(this.messages),
       tools,
       stopWhen: stepCountIs(5),
-      // OpenAI's strict tool calling mode requires every property in a tool
-      // input schema to be in `required` and rejects optional fields. Our
-      // modifyDiagram updates are intentionally all optional, so we turn
-      // strict mode off. We still get Zod validation locally.
-      providerOptions: { openai: { strictJsonSchema: false } },
     });
 
     return result.toUIMessageStreamResponse();

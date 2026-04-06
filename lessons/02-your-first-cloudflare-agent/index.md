@@ -239,36 +239,48 @@ export const tools = {
 
   modifyDiagram: tool({
     description:
-      "Modify an existing element on the canvas by id. Set only the fields you want to change; everything else is left alone.",
+      "Modify an existing element on the canvas by id. Pass null for any field you don't want to change.",
     inputSchema: z.object({
       elementId: z.string().describe("The id of the element to modify"),
-      // Explicit field list rather than a free form record. OpenAI's strict
-      // tool calling rejects unconstrained additionalProperties, and giving
-      // the model an enumerated list also tells it exactly what's tweakable.
+      // Every field is nullable rather than optional. OpenAI's strict tool
+      // calling mode requires every property in `properties` to also be in
+      // `required` — optional fields are rejected. Nullable fields satisfy
+      // strict mode (they're required, but the value can be null), and the
+      // model passes null for fields it doesn't want to change. We strip
+      // nulls before applying the merge on the client.
       updates: z.object({
-        x: z.number().optional(),
-        y: z.number().optional(),
-        width: z.number().optional(),
-        height: z.number().optional(),
-        text: z.string().optional(),
-        fontSize: z.number().optional(),
-        textAlign: z.enum(["left", "center", "right"]).optional(),
-        strokeColor: z.string().optional(),
-        backgroundColor: z.string().optional(),
-        fillStyle: z.enum(["solid", "hachure", "cross-hatch"]).optional(),
-        strokeWidth: z.number().optional(),
-        roughness: z.number().optional(),
-        opacity: z.number().optional(),
+        x: z.number().nullable(),
+        y: z.number().nullable(),
+        width: z.number().nullable(),
+        height: z.number().nullable(),
+        text: z.string().nullable(),
+        fontSize: z.number().nullable(),
+        textAlign: z.enum(["left", "center", "right"]).nullable(),
+        strokeColor: z.string().nullable(),
+        backgroundColor: z.string().nullable(),
+        fillStyle: z.enum(["solid", "hachure", "cross-hatch"]).nullable(),
+        strokeWidth: z.number().nullable(),
+        roughness: z.number().nullable(),
+        opacity: z.number().nullable(),
       }),
     }),
     execute: async ({ elementId, updates }) => {
-      return { elementId, updates };
+      // Filter out null fields so the client only sees what should actually
+      // change. Without this, a null field would overwrite the live value
+      // and break the element.
+      const filtered: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(updates)) {
+        if (value !== null) filtered[key] = value;
+      }
+      return { elementId, updates: filtered };
     },
   }),
 };
 ```
 
-Notice how the `execute` functions are simple pass throughs. `generateDiagram` just returns the elements the LLM generated. `modifyDiagram` returns the ID and updates for the client to apply. The real "work" is done by the LLM when it decides what elements to create or how to modify them.
+The `generateDiagram` `execute` is a simple pass through — the LLM does the real work picking which elements to create. `modifyDiagram` does one tiny piece of cleanup: it strips out null fields before returning, so the client only ever sees the fields the model actually wants to change.
+
+**Why nullable instead of optional?** OpenAI's strict tool calling mode requires every property in a tool's input schema to be in the `required` list. Optional fields get rejected outright. Nullable fields satisfy the constraint (the field is required, but its value can be `null`), so we keep strict mode on (better validation guarantees from OpenAI) and the model just passes `null` for fields it doesn't want to touch.
 
 ### `src/agent.ts` (new file)
 
@@ -314,11 +326,6 @@ export class DesignAgent extends AIChatAgent<Env> {
       messages: await convertToModelMessages(this.messages),
       tools,
       stopWhen: stepCountIs(5),
-      // OpenAI's strict tool calling mode requires every property in a tool
-      // input schema to be in `required` and rejects optional fields. Our
-      // modifyDiagram updates are intentionally all optional, so we turn
-      // strict mode off. We still get Zod validation locally.
-      providerOptions: { openai: { strictJsonSchema: false } },
     });
 
     return result.toUIMessageStreamResponse();
@@ -331,7 +338,7 @@ This is remarkably concise. The `AIChatAgent` base class gives us:
 - `this.env` — access to environment variables (our API key)
 - WebSocket handling, message serialization, and the chat protocol
 
-We just implement `onChatMessage()`, call `streamText()` with our model, tools, and messages, and return the streaming response. The one non-obvious bit is `providerOptions: { openai: { strictJsonSchema: false } }`. OpenAI's default strict tool mode rejects any tool input schema with optional properties, and our `modifyDiagram` tool intentionally has many optional fields (you only set what you want to change). Turning strict mode off lets that pattern work. We still validate the model's tool inputs locally via Zod, so we don't lose safety.
+We just implement `onChatMessage()`, call `streamText()` with our model, tools, and messages, and return the streaming response.
 
 ### `wrangler.toml` (modified)
 
