@@ -2,8 +2,11 @@
 // prompt the agent should handle, plus what a good response looks like.
 
 export type Difficulty = "simple" | "medium" | "hard" | "edge";
-export type Category = "layout" | "content" | "structure" | "edge-case";
+export type Category = "create" | "modify" | "domain" | "edge";
 
+// The dataset has more fields than this (seed, expectedKeywords, preservedIds)
+// but the lesson 4 harness only needs id, input, and the bookkeeping fields.
+// We'll use the rest in lesson 5 when we add real scorers.
 export interface TestCase {
   id: string;
   input: string;
