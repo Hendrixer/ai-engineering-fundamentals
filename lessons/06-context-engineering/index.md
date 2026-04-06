@@ -413,63 +413,6 @@ The eval is now scoring **the merged final state of the canvas**, the same way t
 
 A recurring theme in eval work: the scorer is only as good as the data you hand it. When you find a metric at 0 percent that should be moving, suspect the scorer/extraction before you suspect the model.
 
-## A latent bug surfaced by canvas state
-
-Once we tried the live app and asked the agent to modify something ("center the text on all elements with text and make the font size smaller"), every `modifyDiagram` call came back red in the chat. Ten failed tool calls in a row, then the agent gave up and offered to regenerate the whole diagram.
-
-Two latent bugs from earlier lessons that were fine until canvas awareness landed:
-
-**1. The `modifyDiagram` schema used `z.record(z.string(), z.unknown())` for `updates`.** That works in plain Zod but produces a JSON Schema with unconstrained `additionalProperties`, and **OpenAI's strict tool calling mode rejects it**. The model tried to call the tool, the SDK passed the call to OpenAI, OpenAI refused to format the call, and the AI SDK reported it as a failed tool part. The execute function never even ran.
-
-The fix is an explicit field list:
-
-```ts
-modifyDiagram: tool({
-  description: "Modify an existing element on the canvas by id. Set only the fields you want to change; everything else is left alone.",
-  inputSchema: z.object({
-    elementId: z.string(),
-    updates: z.object({
-      x: z.number().optional(),
-      y: z.number().optional(),
-      width: z.number().optional(),
-      height: z.number().optional(),
-      text: z.string().optional(),
-      fontSize: z.number().optional(),
-      textAlign: z.enum(["left", "center", "right"]).optional(),
-      strokeColor: z.string().optional(),
-      backgroundColor: z.string().optional(),
-      fillStyle: z.enum(["solid", "hachure", "cross-hatch"]).optional(),
-      strokeWidth: z.number().optional(),
-      roughness: z.number().optional(),
-      opacity: z.number().optional(),
-    }),
-  }),
-  execute: async ({ elementId, updates }) => ({ elementId, updates }),
-}),
-```
-
-This is also better for the model: it now knows *exactly* which properties are tweakable instead of guessing.
-
-**2. `App.tsx` only handled `tool-generateDiagram` results, never `tool-modifyDiagram`.** Even if the schema bug were fixed, the canvas would have ignored every modify call. Add a parallel handler:
-
-```ts
-} else if (part.type === "tool-modifyDiagram") {
-  appliedToolCalls.current.add(part.toolCallId);
-  const output = part.output as { elementId?: string; updates?: Record<string, unknown> };
-  if (output?.elementId && output.updates) {
-    const current = excalidrawAPI.getSceneElements();
-    const next = current.map((el) =>
-      el.id === output.elementId ? ({ ...el, ...output.updates } as typeof el) : el
-    );
-    excalidrawAPI.updateScene({ elements: next });
-  }
-}
-```
-
-Both bugs were sitting there since lesson 3 when the tools were first defined, harmless because no part of the system ever actually exercised modify. Lesson 6 added the canvas state, the agent immediately tried to use it, and both bugs surfaced together.
-
-The lesson here isn't about Zod or strict mode specifically. It's about **adjacent code rotting in the dark**. Every time you ship a feature that touches new code paths, expect to find latent bugs in the things that were never exercised before. This is also why having an eval matters — the eval *did* exercise modify, which is why the eval scores moved correctly even though the live app was visibly broken. The eval and the prod app went through different code paths (eval bypasses the strict tool calling layer because we use `generateText` directly with our own tool wiring, prod goes through `streamText` which serializes the schema for OpenAI). The eval told us "modify works." The live app told us "modify doesn't work." Both were true. Now they agree.
-
 ## What is next
 
 Lesson 7 — **advanced tool use**. The single giant `generateDiagram` tool is too coarse. We'll break it into smaller, focused tools (`addElement`, `updateElement`, `removeElement`, `alignElements`, `queryCanvas`). Each tool does one thing well. The agent makes more, smaller calls. Structure scores climb because the model isn't doing all its layout math in a single JSON blob anymore.
