@@ -103,8 +103,8 @@
 /* Small corner button on the main app to launch the viewer */
 .viewer-launch {
   position: fixed;
-  bottom: 12px;
-  left: 12px;
+  top: 10px;
+  right: 12px;
   font-family: "JetBrains Mono", monospace;
   font-size: 11px;
   padding: 6px 10px;
