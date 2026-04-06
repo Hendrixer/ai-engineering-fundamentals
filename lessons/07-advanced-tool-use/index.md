@@ -291,15 +291,47 @@ export class DesignAgent extends AIChatAgent<Env> {
 `src/agent-core.ts` drops `buildSystem` and the canvas state argument. The system prompt is the same string for every request now. The tool wiring uses `buildTools(env)`. The eval variant of `runAgent` builds eval only versions of every tool that mutate an in memory `sim` array, including a `queryCanvas` *with* an execute function (because the eval has no browser to fulfill it):
 
 ```ts
+const sim: Record<string, unknown>[] = (seedCanvas as Record<string, unknown>[]).map((el) => ({ ...el }));
+
+const baseTools = buildTools(env);
 const evalTools = {
-  addElements: tool({ /* ... */ execute: async ({ elements }) => {
-    for (const el of elements) sim.push({ ...el });
-    return { elements };
-  }}),
-  updateElements: tool({ /* ... */ execute: async ({ updates }) => {
-    // mutate sim, return the cleaned updates
-  }}),
-  removeElements: tool({ /* ... */ }),
+  addElements: tool({
+    description: baseTools.addElements.description,
+    inputSchema: baseTools.addElements.inputSchema as never,
+    execute: async ({ elements }: { elements: unknown[] }) => {
+      for (const el of elements) sim.push({ ...(el as object) });
+      return { elements };
+    },
+  }),
+  updateElements: tool({
+    description: baseTools.updateElements.description,
+    inputSchema: baseTools.updateElements.inputSchema as never,
+    execute: async ({ updates }: { updates: { id: string; fields: Record<string, unknown> }[] }) => {
+      const cleaned = updates.map(({ id, fields }) => {
+        const filtered: Record<string, unknown> = {};
+        for (const [key, value] of Object.entries(fields)) {
+          if (value !== null) filtered[key] = value;
+        }
+        return { id, fields: filtered };
+      });
+      for (const { id, fields } of cleaned) {
+        const target = sim.find((el) => el.id === id);
+        if (target) Object.assign(target, fields);
+      }
+      return { updates: cleaned };
+    },
+  }),
+  removeElements: tool({
+    description: baseTools.removeElements.description,
+    inputSchema: baseTools.removeElements.inputSchema as never,
+    execute: async ({ ids }: { ids: string[] }) => {
+      for (const id of ids) {
+        const idx = sim.findIndex((el) => el.id === id);
+        if (idx >= 0) sim.splice(idx, 1);
+      }
+      return { ids };
+    },
+  }),
   queryCanvas: tool({
     description: baseTools.queryCanvas.description,
     inputSchema: z.object({}),
