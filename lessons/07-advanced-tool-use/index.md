@@ -194,7 +194,31 @@ const { messages, sendMessage, status } = useAgentChat({
 });
 ```
 
-That's all of it. No `useEffect` watcher, no `appliedToolCalls` ref, no message walking. The tool **is** the apply, and the apply returns a real result the agent can read on its next step. If `removeElements` was called on an id that didn't exist, the agent finds out from the result and can react.
+That's all of it. The tool **is** the apply, and the apply returns a real result the agent can read on its next step. If `removeElements` was called on an id that didn't exist, the agent finds out from the result and can react.
+
+### Delete the lesson 6 plumbing
+
+Several pieces of `App.tsx` exist only because lesson 6 had to ship the canvas state to the worker on every turn and watch tool result messages to apply them to the scene. With everything client side, all of it goes away.
+
+In `src/App.tsx`, delete:
+
+- The `useMemo` import (no longer used).
+- The `appliedToolCalls` ref. Tool calls run exactly once now, no double apply guard needed.
+- The entire `sendWithCanvas` wrapper. We pass the raw `sendMessage` to `<ChatPanel>` instead.
+- The entire `useEffect` that watches `messages` for `tool-generateDiagram` / `tool-modifyDiagram` parts and applies them to the scene. Replaced by `onToolCall`.
+- The `import { serializeCanvasState } from "./context/canvas-state"` line stays, because `onToolCall`'s `queryCanvas` branch still uses it.
+
+In `src/agent.ts`, delete:
+
+- `extractCanvasState` and the `CanvasStatePart` type.
+- The `canvasState` argument passed to `streamAgent`.
+
+In `src/agent-core.ts`, delete:
+
+- `buildSystem` and the `# Current canvas state` injection.
+- The `canvasState` parameter on `AgentArgs` (the streaming variant; the eval variant gets a new `seedCanvas` parameter, see section 7).
+
+You can also delete `src/context/canvas-state.ts` entirely... almost. The `serializeCanvasState` function is still used by the browser's `queryCanvas` handler and by the eval's headless `queryCanvas` simulator. Move the file or leave it where it is, but the function is still load bearing.
 
 ## 5. searchWeb (server side)
 
@@ -294,8 +318,9 @@ export class DesignAgent extends AIChatAgent<Env> {
 The eval has no browser, so the four client side tools have to be simulated headless. `runAgent` builds eval only versions with `execute` functions that mutate an in memory `sim` array. This pattern shows up again any time you have client side tools and a headless eval.
 
 ```ts
-const sim: any[] = [...seedCanvas];
+const sim: any[] = (seedCanvas ?? []).map((el: any) => ({ ...el }));
 
+const baseTools = buildTools(env);
 const evalTools = {
   addElements: tool({
     description: baseTools.addElements.description,
@@ -305,7 +330,42 @@ const evalTools = {
       return { added: elements.length };
     },
   }),
-  // ... updateElements, removeElements, queryCanvas similarly
+  updateElements: tool({
+    description: baseTools.updateElements.description,
+    inputSchema: baseTools.updateElements.inputSchema as never,
+    execute: async ({ updates }: { updates: { id: string; fields: Record<string, unknown> }[] }) => {
+      let updated = 0;
+      for (const { id, fields } of updates) {
+        const target = sim.find((el) => el.id === id);
+        if (!target) continue;
+        for (const [k, v] of Object.entries(fields)) {
+          if (v !== null) target[k] = v;
+        }
+        updated += 1;
+      }
+      return { updated };
+    },
+  }),
+  removeElements: tool({
+    description: baseTools.removeElements.description,
+    inputSchema: baseTools.removeElements.inputSchema as never,
+    execute: async ({ ids }: { ids: string[] }) => {
+      let removed = 0;
+      for (const id of ids) {
+        const idx = sim.findIndex((el) => el.id === id);
+        if (idx >= 0) {
+          sim.splice(idx, 1);
+          removed += 1;
+        }
+      }
+      return { removed };
+    },
+  }),
+  queryCanvas: tool({
+    description: baseTools.queryCanvas.description,
+    inputSchema: z.object({}),
+    execute: async () => ({ summary: serializeCanvasState(sim) }),
+  }),
   searchWeb: baseTools.searchWeb,
 };
 ```
