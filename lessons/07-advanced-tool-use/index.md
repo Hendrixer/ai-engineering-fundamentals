@@ -556,7 +556,7 @@ return { text: result.text, elements: sim, toolCalls, steps: result.steps };
 
 The current scorers (Schema, Structure, LabelKeywords, Preservation) all pass even when the diagram is visually broken. We've talked about why throughout this lesson: arrows that don't bind, boxes with no labels, shapes that don't connect. None of the existing scorers can see those failures.
 
-Lesson 7 ships **four new scorers** alongside the tool and schema work. They aren't live coded — there's enough new code in this lesson already, and the scorers are mostly mechanical filtering and counting. They're already in `evals/scorers/`. Open each file as we go through them: each one has a long header comment explaining what it measures, what failure mode it catches, and why it lives in this lesson.
+Lesson 7 ships **four new scorers** alongside the tool and schema work. They're already in `evals/scorers/`. Open each file as we go through them: each one has a long header comment explaining what it measures, what failure mode it catches, and why it lives in this lesson.
 
 The Preservation scorer gets retired. It was tied to the old `modifyDiagram` tool surface and once `extractElements` simulates the canvas headlessly it stopped meaning much. ToolChoice replaces it.
 
@@ -605,5 +605,3 @@ Run the eval. After this lesson:
 - **BoundArrows** should also jump. Same reason: the schema description names the failure mode in caps.
 - **Connectivity** should follow BoundArrows up, with some gap because the model still misses cases that need 4+ arrows.
 - **ToolChoice** is a brand new metric. It starts at whatever it starts at; subsequent lessons will move it.
-
-Open the scorer files and read the header comments out loud during the lesson. They explain why each one exists and what failure it catches. That's all the live coverage these need.
