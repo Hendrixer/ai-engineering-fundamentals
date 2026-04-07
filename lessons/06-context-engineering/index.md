@@ -253,143 +253,6 @@ export class DesignAgent extends AIChatAgent<Env> {
 ```
 
 Each turn rebuilds the system prompt fresh from the canvas data part on that turn's user message. Old canvas state never accumulates.
-
-## New scorers: BoundArrows and Connectivity
-
-The current scorers (Schema, Structure, LabelKeywords, Preservation) all pass even when the diagram is visually broken. Look at the lesson 5 output: the agent draws three boxes and arrows that don't connect to anything. Schema passes because every element has the required fields. Structure passes because the count matches. LabelKeywords passes because the words are in there somewhere. None of them measure whether the diagram **actually composes into a working picture**.
-
-We need scorers that look at the visual structure. Two new ones, both output based, neither needs golden dataset changes.
-
-### BoundArrows
-
-For every arrow in the output, check that BOTH `startBinding.elementId` and `endBinding.elementId` reference an element id that exists in the output. Score is the ratio of properly bound arrows to total arrows.
-
-This catches the "arrows flying off into space" failure. Arrows without bindings, or with bindings that point to ids the model invented, sit at hardcoded coordinates and look like floating lines next to the actual diagram. The current agent gets this wrong constantly.
-
-**`evals/scorers/boundArrows.ts`**:
-
-```ts
-import type { EvalScorer } from "braintrust";
-import type { AgentOutput } from "./schema";
-import type { GoldenTestCase } from "../buildMessages";
-
-export const boundArrowsScorer: EvalScorer<GoldenTestCase, AgentOutput, GoldenTestCase> = ({
-  output,
-}) => {
-  const elements = (output.elements ?? []) as Record<string, unknown>[];
-  const ids = new Set(
-    elements.map((el) => (typeof el?.id === "string" ? el.id : null)).filter(Boolean) as string[]
-  );
-
-  const arrows = elements.filter((el) => el?.type === "arrow");
-  if (arrows.length === 0) return null;
-
-  let bound = 0;
-  const broken: string[] = [];
-  for (const arrow of arrows) {
-    const start = arrow.startBinding as { elementId?: string } | null | undefined;
-    const end = arrow.endBinding as { elementId?: string } | null | undefined;
-    const ok = !!(start?.elementId && end?.elementId && ids.has(start.elementId) && ids.has(end.elementId));
-    if (ok) bound += 1;
-    else broken.push(typeof arrow.id === "string" ? arrow.id : "(no id)");
-  }
-
-  return {
-    name: "BoundArrows",
-    score: bound / arrows.length,
-    metadata: { bound, total: arrows.length, broken },
-  };
-};
-```
-
-Returns null when there are no arrows (Braintrust skips the case).
-
-### Connectivity
-
-For diagrams that should be connected (the prompt mentions "flow", "sequence", "between", "from X to Y"), build a graph from the bound arrows and check what fraction of shapes are reachable from the first one. Score is `reachable / total`.
-
-This catches the "I made 5 boxes but only 2 are connected" failure. It only fires for prompts that hint at connectivity, so it doesn't punish freeform diagrams that are inherently disconnected.
-
-**`evals/scorers/connectivity.ts`**:
-
-```ts
-import type { EvalScorer } from "braintrust";
-import type { AgentOutput } from "./schema";
-import type { GoldenTestCase } from "../buildMessages";
-
-const CONNECTED_HINTS = ["flow", "sequence", "between", "from", "to ", "pipeline", "chain", "process"];
-const SHAPE_TYPES = new Set(["rectangle", "ellipse", "diamond"]);
-
-export const connectivityScorer: EvalScorer<GoldenTestCase, AgentOutput, GoldenTestCase> = ({
-  output,
-  input,
-}) => {
-  const prompt = (input?.input ?? "").toLowerCase();
-  if (!CONNECTED_HINTS.some((h) => prompt.includes(h))) return null;
-
-  const elements = (output.elements ?? []) as Record<string, unknown>[];
-  const shapes = elements.filter((el) => typeof el?.type === "string" && SHAPE_TYPES.has(el.type as string));
-  if (shapes.length < 2) return null;
-
-  const adj = new Map<string, Set<string>>();
-  for (const shape of shapes) {
-    if (typeof shape.id === "string") adj.set(shape.id, new Set());
-  }
-
-  for (const el of elements) {
-    if (el?.type !== "arrow") continue;
-    const start = (el.startBinding as { elementId?: string } | null | undefined)?.elementId;
-    const end = (el.endBinding as { elementId?: string } | null | undefined)?.elementId;
-    if (!start || !end) continue;
-    if (adj.has(start) && adj.has(end)) {
-      adj.get(start)!.add(end);
-      adj.get(end)!.add(start);
-    }
-  }
-
-  const start = shapes[0]!.id as string;
-  const seen = new Set<string>([start]);
-  const queue = [start];
-  while (queue.length > 0) {
-    const cur = queue.shift()!;
-    for (const next of adj.get(cur) ?? []) {
-      if (!seen.has(next)) {
-        seen.add(next);
-        queue.push(next);
-      }
-    }
-  }
-
-  return {
-    name: "Connectivity",
-    score: seen.size / shapes.length,
-    metadata: { reachable: seen.size, total: shapes.length },
-  };
-};
-```
-
-### Wire them in
-
-**`evals/diagram.eval.ts`**:
-
-```ts
-import { boundArrowsScorer } from "./scorers/boundArrows";
-import { connectivityScorer } from "./scorers/connectivity";
-
-// ...
-
-scores: [
-  schemaScorer,
-  structureScorer,
-  preservationScorer,
-  labelKeywordScorer,
-  boundArrowsScorer,
-  connectivityScorer,
-],
-```
-
-These two scorers will be near zero on the lesson 5 baseline and should jump significantly with the new system prompt. They're the most visceral demonstration of "context engineering" because the difference shows up on the canvas, not just in the numbers.
-
 ## Re-run the eval
 
 ```bash
@@ -398,10 +261,10 @@ npm run eval
 
 Compare against the baseline. Things to watch for:
 
-- **BoundArrows** should jump from near zero to most of the way to 1. The hard rules and the worked example tell the model exactly how to bind arrows. If it's still low, the model isn't reading the rules; check the prompt rendering.
-- **Connectivity** should also jump. The pattern library and layout grid push the model toward proper shape-arrow-shape structure.
-- **Preservation** should still move (canvas state in the prompt is doing its job).
-- **Schema, Structure, LabelKeywords** should hold steady or improve slightly.
+- **Preservation** is the headline metric for this lesson. It should jump because canvas state in the prompt lets the model find existing ids before modifying.
+- **Schema, Structure, LabelKeywords** should hold steady or improve slightly. The new prompt is stricter and the worked example shows clean output, but they aren't the core point of this lesson.
+
+The current scorers can't see whether the diagram is *visually* working. Schema passes when every element has the required fields. Structure passes when the count is right. LabelKeywords passes when the words appear anywhere. None of them notice when arrows float free of the boxes they're supposed to connect, or when shapes have no labels because the model put `text` on a rectangle. Lesson 7 adds three new scorers (BoundArrows, Connectivity, BoundLabels) that catch exactly those failures, after we've finished the tool and schema work that lets the model fix them.
 
 LLMs are non deterministic at temperature > 0 and there's run to run noise even on the same code. Direction and which scorers move matters more than specific digits.
 
