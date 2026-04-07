@@ -19,10 +19,10 @@ import { schemaScorer, type AgentOutput } from "./scorers/schema";
 import { structureScorer } from "./scorers/structure";
 import { toolChoiceScorer } from "./scorers/toolChoice";
 import { labelKeywordScorer } from "./scorers/labelKeyword";
-// boundArrowsScorer, boundLabelsScorer, connectivityScorer ship in
-// evals/scorers/ but are deliberately not wired here. They measure visual
-// artifact quality, which is lesson 8's subject. Lesson 8 starts by wiring
-// them into this file.
+import { boundArrowsScorer } from "./scorers/boundArrows";
+import { connectivityScorer } from "./scorers/connectivity";
+import { boundLabelsScorer } from "./scorers/boundLabels";
+import { noOverlapsScorer } from "./scorers/noOverlaps";
 
 config({ path: ".dev.vars" });
 
@@ -63,5 +63,9 @@ Eval<GoldenTestCase, AgentOutput, GoldenTestCase>("Diagram Agent", {
     structureScorer,
     toolChoiceScorer,
     labelKeywordScorer,
+    boundArrowsScorer,
+    connectivityScorer,
+    boundLabelsScorer,
+    noOverlapsScorer,
   ],
 });

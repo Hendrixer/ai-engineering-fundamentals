@@ -15,6 +15,7 @@ import { z } from "zod";
 import { buildTools } from "./tools";
 import { serializeCanvasState } from "./context/canvas-state";
 import { applySkeleton } from "./context/applySkeleton";
+import { findOverlaps } from "./context/overlaps";
 
 export const SYSTEM_PROMPT = `# Role
 
@@ -165,7 +166,11 @@ export async function runAgent({
         // canvas would actually render.
         const runtime = applySkeleton(elements as Record<string, unknown>[]);
         for (const el of runtime) sim.push({ ...el });
-        return { added: runtime.length };
+        // Surface overlaps in the tool result so the agent loop sees
+        // collisions immediately and can self correct via updateElements.
+        // Same finding the noOverlaps scorer would report on this scene.
+        const overlaps = findOverlaps(sim);
+        return { added: runtime.length, overlaps };
       },
     }),
     updateElements: tool({

@@ -7,6 +7,12 @@
 // Used by the worker on every request: it pulls the canvas state off the
 // latest user message, runs it through this function, and appends the
 // result to the system prompt.
+//
+// Also reports overlaps at the bottom of the summary so that any time the
+// model reads the canvas it sees the same layout finding the noOverlaps
+// scorer would. Hygiene: read paths and write paths agree.
+
+import { findOverlaps } from "./overlaps";
 
 interface ElementLike {
   id?: unknown;
@@ -113,5 +119,13 @@ export function serializeCanvasState(elements: unknown[]): string {
     .map(([type, n]) => `${n} ${type}${n === 1 ? "" : "s"}`)
     .join(", ");
 
-  return `Canvas contains ${summary}:\n${lines.join("\n")}`;
+  const overlaps = findOverlaps(elements);
+  const overlapLines =
+    overlaps.length > 0
+      ? `\n\nOverlapping elements (these collide on the canvas, fix them):\n${overlaps
+          .map(([a, b]) => `- ${a} ↔ ${b}`)
+          .join("\n")}`
+      : "";
+
+  return `Canvas contains ${summary}:\n${lines.join("\n")}${overlapLines}`;
 }

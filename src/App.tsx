@@ -10,6 +10,7 @@ import { useAgentChat } from "@cloudflare/ai-chat/react";
 import Canvas from "./components/Canvas";
 import ChatPanel from "./components/chat/ChatPanel";
 import { serializeCanvasState } from "./context/canvas-state";
+import { findOverlaps } from "./context/overlaps";
 import "./App.css";
 
 // One agent instance per page load. The canvas state lives only in the
@@ -85,7 +86,15 @@ export default function App() {
         const next = [...api.getSceneElements(), ...newOnes];
         api.updateScene({ elements: next, captureUpdate: CaptureUpdateAction.IMMEDIATELY });
         api.scrollToContent(next, { fitToContent: true });
-        addToolOutput({ toolCallId: toolCall.toolCallId, output: { added: newOnes.length } });
+        // Detect overlaps in the post-add scene and surface them in the
+        // tool result so the agent's next reasoning step sees collisions
+        // and can self correct via updateElements. Same finding the
+        // noOverlaps eval scorer would report.
+        const overlaps = findOverlaps(next as unknown[]);
+        addToolOutput({
+          toolCallId: toolCall.toolCallId,
+          output: { added: newOnes.length, overlaps },
+        });
         return;
       }
 
