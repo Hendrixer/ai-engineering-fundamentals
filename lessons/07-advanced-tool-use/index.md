@@ -10,7 +10,12 @@ Lesson 6 fixed the agent's context. This lesson fixes its tools. We replace the 
 
 ## 1. The element schema
 
-Both `addElements` and (a nullable variant of) `updateElements` use the same shape. Defining it once means the agent sees the same field names whether it's creating or editing.
+Both `addElements` and (a nullable variant of) `updateElements` use the same shape. The schema is more than validation: **field descriptions are part of the prompt the model reads**. Use them to teach the model how Excalidraw actually works, especially the gotchas it would otherwise get wrong.
+
+The two big gotchas this schema teaches:
+
+- **Labels need `containerId`.** A text element with `containerId` set to a shape's id renders inside that shape and is automatically centered. Without `containerId`, the text floats free. The lesson 6 system prompt told the model this in prose; now we make the schema enforce it by adding the field and describing it explicitly.
+- **Arrows need both bindings.** `startBinding.elementId` and `endBinding.elementId` reference shapes by id. The descriptions on these fields say "REQUIRED for arrows that connect two shapes" and "if the id is wrong or missing, the arrow floats free in space, which is always a bug." The model reads these descriptions when it loads the tool.
 
 **`src/tools/element-schema.ts`**:
 
@@ -18,31 +23,74 @@ Both `addElements` and (a nullable variant of) `updateElements` use the same sha
 import { z } from "zod";
 
 export const elementSchema = z.object({
-  id: z.string(),
-  type: z.enum(["rectangle", "ellipse", "diamond", "text", "arrow", "line"]),
-  x: z.number(),
-  y: z.number(),
-  width: z.number(),
-  height: z.number(),
-  strokeColor: z.string().nullable(),
-  backgroundColor: z.string().nullable(),
+  id: z.string().describe(
+    "Unique identifier. Pick concise meaningful ids like 'rect_login' or 'arrow_login_db'. Other elements (text labels, arrow bindings) reference shapes by id, so the id must be unique within the canvas and stable across calls."
+  ),
+  type: z.enum(["rectangle", "ellipse", "diamond", "text", "arrow", "line"]).describe(
+    "Element type. rectangle/ellipse/diamond are container shapes, text is a label, arrow is a directed connection, line is an undirected connection."
+  ),
+  x: z.number().describe("X position in pixels"),
+  y: z.number().describe("Y position in pixels"),
+  width: z.number().describe("Width in pixels. Must be at least 20."),
+  height: z.number().describe("Height in pixels. Must be at least 20."),
+
+  strokeColor: z.string().nullable().describe("Stroke color (hex). Null for default '#1e1e1e'."),
+  backgroundColor: z.string().nullable().describe("Fill color. Null for default 'transparent'."),
   fillStyle: z.enum(["solid", "hachure", "cross-hatch"]).nullable(),
   strokeWidth: z.number().nullable(),
-  roughness: z.number().nullable(),
+  roughness: z.number().nullable().describe("0 for clean, 1 for sketchy. Null for default."),
   opacity: z.number().nullable(),
-  text: z.string().nullable(),
+
+  text: z.string().nullable().describe(
+    "REQUIRED for text elements (the label content). FORBIDDEN on rectangle/ellipse/diamond: setting text on a shape does NOT render anything inside the box, you must create a separate text element with containerId pointing to the shape's id. Null for non text elements."
+  ),
   fontSize: z.number().nullable(),
-  fontFamily: z.number().nullable(),
+  fontFamily: z.number().nullable().describe("1=Virgil, 2=Helvetica, 3=Cascadia. Null for default."),
   textAlign: z.enum(["left", "center", "right"]).nullable(),
-  points: z.array(z.array(z.number())).nullable(),
-  startBinding: z.object({ elementId: z.string(), focus: z.number(), gap: z.number() }).nullable(),
-  endBinding: z.object({ elementId: z.string(), focus: z.number(), gap: z.number() }).nullable(),
+  containerId: z.string().nullable().describe(
+    "TEXT elements only. Set this to the id of the rectangle, ellipse, or diamond this label belongs INSIDE. The shape must exist in the same addElements call or already on the canvas. When containerId is set, Excalidraw automatically centers the text inside the container. This is the ONLY way to label a shape. Null for shapes and standalone text."
+  ),
+
+  points: z.array(z.array(z.number())).nullable().describe(
+    "Arrow/line shape only. Array of [x,y] points relative to the element's x,y. Usually you can leave this null and let the bindings determine the path. Null for non line shapes."
+  ),
+  startBinding: z.object({
+    elementId: z.string().describe(
+      "Id of the shape this arrow starts at. The shape must exist in the same call or already on the canvas. If the id is wrong or missing, the arrow floats free in space, which is always a bug."
+    ),
+    focus: z.number().describe("0 for center attach. Use 0 unless you have a reason."),
+    gap: z.number().describe("Pixels of gap between the arrow and the shape edge. Use 8."),
+  }).nullable().describe(
+    "REQUIRED for arrows that connect two shapes. Set both startBinding AND endBinding for any connecting arrow. Null for lines and standalone arrows."
+  ),
+  endBinding: z.object({
+    elementId: z.string().describe("Id of the shape this arrow ends at."),
+    focus: z.number().describe("0 for center attach."),
+    gap: z.number().describe("8 for normal spacing."),
+  }).nullable().describe("REQUIRED for arrows that connect two shapes. Pair with startBinding."),
 });
 ```
 
-Note **nullable, not optional**. OpenAI's strict mode requires every field present in every call. Null means "not applicable for this element type" (e.g. `points` on a rectangle, `startBinding` on a text). Optional fields fail strict mode.
+Two things this schema does that the previous one didn't:
 
-Speaking of strict mode: the AI SDK exposes it as a per tool flag, [documented here](https://ai-sdk.dev/docs/ai-sdk-core/tools-and-tool-calling). We pass `strict: true` on every canvas tool. With strict mode plus a fully nullable schema, OpenAI's structured outputs are constrained to schemas that validate exactly, which means the model can never produce a malformed call. You'll see the flag on each tool definition below.
+1. **Adds `containerId`**, the field that makes text elements bind to shapes. Without it, the lesson 6 hard rule "labels are separate text elements" was theory; now it's enforceable.
+2. **Writes descriptions that name the failure modes.** "REQUIRED for arrows that connect two shapes," "FORBIDDEN on rectangle/ellipse/diamond," "if the id is wrong or missing the arrow floats free in space, which is always a bug." The model reads these when it loads the tool. They're prompt content.
+
+Note **nullable, not optional**. OpenAI's strict mode requires every field present in every call. Null means "not applicable for this element type." Optional fields fail strict mode.
+
+Speaking of strict mode: the AI SDK exposes it as a per tool flag, [documented here](https://ai-sdk.dev/docs/ai-sdk-core/tools-and-tool-calling). We pass `strict: true` on every canvas tool. With strict mode plus a fully nullable schema, OpenAI's structured outputs are constrained to schemas that validate exactly, which means the model can never produce a malformed call.
+
+### Schema descriptions are prompt content
+
+This is the meta point of section 1, and it's worth saying out loud. When you call `tool({ description, inputSchema })`, the AI SDK serializes the inputSchema (including every `.describe()` you wrote) into the JSON Schema that gets sent to the model alongside the tool's top level description. Every word in those descriptions is paying for itself in tokens **and** is influencing the model's behavior. Treat them like the system prompt: precise, opinionated, and pointed at specific failure modes.
+
+A couple of patterns worth noting:
+
+- **Use REQUIRED / FORBIDDEN in caps** when a field is conditional on the element type. Models pay attention to caps in schema descriptions, and the contrast with the surrounding lowercase prose makes them stand out.
+- **Name the bug.** "If the id is wrong or missing, the arrow floats free in space, which is always a bug" is a better description than "Id of the target shape" because it tells the model what the failure looks like, not just what the field is.
+- **Reference other fields by name.** "Pair with startBinding" on `endBinding` reinforces that they go together. The model picks up these cross references.
+
+These are small edits to a file that already existed. They cost nothing at runtime. They move the BoundLabels and BoundArrows scorers more than any system prompt change does, because the model loads tool schemas with high priority.
 
 ## 2. Client side CRUD tools
 
@@ -442,3 +490,54 @@ The rules, by category:
 - **edge**: returns null and Braintrust skips it.
 
 Add it to the eval scorer list and drop `preservationScorer`. Run the eval, compare against the lesson 6 baseline. Schema, LabelKeywords, and Structure should hold or improve. ToolChoice is a fresh metric with no historical comparison.
+
+### New scorer: BoundLabels
+
+Lesson 6 added BoundArrows and Connectivity, but it didn't measure whether the model was actually labeling its shapes. It couldn't, because the lesson 6 schema didn't have `containerId`. Now that we've added `containerId` to the element schema in section 1, we have a precise way to measure this.
+
+`BoundLabels` checks: for every container shape (rectangle, ellipse, diamond) in the output, is there a text element whose `containerId` points back to it? Score is the ratio of labeled shapes to total shapes. This is the most direct measure of "is the diagram readable" we can write.
+
+**`evals/scorers/boundLabels.ts`**:
+
+```ts
+import type { EvalScorer } from "braintrust";
+import type { AgentOutput } from "./schema";
+import type { GoldenTestCase } from "../buildMessages";
+
+const SHAPE_TYPES = new Set(["rectangle", "ellipse", "diamond"]);
+
+export const boundLabelsScorer: EvalScorer<GoldenTestCase, AgentOutput, GoldenTestCase> = ({
+  output,
+}) => {
+  const elements = (output.elements ?? []) as Record<string, unknown>[];
+  const shapes = elements.filter(
+    (el) => typeof el?.type === "string" && SHAPE_TYPES.has(el.type as string)
+  );
+  if (shapes.length === 0) return null;
+
+  const boundLabelShapeIds = new Set<string>();
+  for (const el of elements) {
+    if (el?.type !== "text") continue;
+    const containerId = el.containerId;
+    if (typeof containerId === "string" && containerId.length > 0) {
+      boundLabelShapeIds.add(containerId);
+    }
+  }
+
+  let labeled = 0;
+  const unlabeled: string[] = [];
+  for (const shape of shapes) {
+    const id = typeof shape.id === "string" ? shape.id : null;
+    if (id && boundLabelShapeIds.has(id)) labeled += 1;
+    else unlabeled.push(id ?? "(no id)");
+  }
+
+  return {
+    name: "BoundLabels",
+    score: labeled / shapes.length,
+    metadata: { labeled, total: shapes.length, unlabeled },
+  };
+};
+```
+
+Add it to the eval scorer list alongside the others. After the schema description changes in section 1, BoundLabels should jump significantly. The model now has both the field (`containerId`) AND the description telling it when to use the field. The two work together: the field is the mechanism, the description is the prompt.

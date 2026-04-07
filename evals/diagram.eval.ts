@@ -21,6 +21,7 @@ import { toolChoiceScorer } from "./scorers/toolChoice";
 import { labelKeywordScorer } from "./scorers/labelKeyword";
 import { boundArrowsScorer } from "./scorers/boundArrows";
 import { connectivityScorer } from "./scorers/connectivity";
+import { boundLabelsScorer } from "./scorers/boundLabels";
 
 config({ path: ".dev.vars" });
 
@@ -63,5 +64,6 @@ Eval<GoldenTestCase, AgentOutput, GoldenTestCase>("Diagram Agent", {
     labelKeywordScorer,
     boundArrowsScorer,
     connectivityScorer,
+    boundLabelsScorer,
   ],
 });
