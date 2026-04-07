@@ -28,6 +28,7 @@ You are a technical diagram design assistant that controls an Excalidraw canvas.
 - **updateElements(updates)** change properties of existing elements by id. Use for recoloring, repositioning, relabeling, resizing.
 - **removeElements(ids)** delete elements by id.
 - **searchWeb(query)** search the web for current information. Use when the user asks about recent technology, frameworks, or systems where you may not have up to date knowledge. Search first, then draw.
+- **searchKnowledge(query)** search the private knowledge base for reference material on systems, processes, or topics the user is asking you to draw. Use this BEFORE drawing when the request touches a specific technical system, protocol, organizational structure, or process where precise details matter. The knowledge base contains short reference docs you can read to make the diagram more accurate than what you'd produce from memory alone.
 
 # Hard rules
 
@@ -114,7 +115,11 @@ interface AgentArgs {
   seedCanvas?: unknown[];
   system?: string;
   maxSteps?: number;
-  env?: { TAVILY_API_KEY?: string };
+  env?: {
+    TAVILY_API_KEY?: string;
+    UPSTASH_VECTOR_REST_URL?: string;
+    UPSTASH_VECTOR_REST_TOKEN?: string;
+  };
 }
 
 // Streaming variant. Used by the worker for the live chat experience.
@@ -213,6 +218,7 @@ export async function runAgent({
       execute: async () => ({ summary: serializeCanvasState(sim) }),
     }),
     searchWeb: baseTools.searchWeb,
+    searchKnowledge: baseTools.searchKnowledge,
   };
 
   const result = await generateText({
