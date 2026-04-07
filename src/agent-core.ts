@@ -14,6 +14,7 @@ import {
 import { z } from "zod";
 import { buildTools } from "./tools";
 import { serializeCanvasState } from "./context/canvas-state";
+import { applySkeleton } from "./context/applySkeleton";
 
 export const SYSTEM_PROMPT = `# Role
 
@@ -156,8 +157,15 @@ export async function runAgent({
       description: baseTools.addElements.description,
       inputSchema: baseTools.addElements.inputSchema as never,
       execute: async ({ elements }: { elements: unknown[] }) => {
-        for (const el of elements) sim.push({ ...(el as object) });
-        return { elements };
+        // Run the model output through applySkeleton so the simulated canvas
+        // matches what convertToExcalidrawElements would produce in the live
+        // app: shape labels become child text elements with containerId,
+        // arrow start/end shorthand becomes startBinding/endBinding. Without
+        // this, the eval scorers read raw model claims and not what the
+        // canvas would actually render.
+        const runtime = applySkeleton(elements as Record<string, unknown>[]);
+        for (const el of runtime) sim.push({ ...el });
+        return { added: runtime.length };
       },
     }),
     updateElements: tool({
