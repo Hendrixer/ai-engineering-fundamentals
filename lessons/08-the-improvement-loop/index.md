@@ -173,36 +173,24 @@ Example: addElements({ elements: [
 
 Update the two vocabulary rules in the `agent-core.ts` system prompt:
 
-```ts
-// 1. **Label shapes via the `label` field on the shape itself.** To put text
-//    inside a rectangle, ellipse, or diamond, set the shape's
-//    `label: { text: "..." }` field. Do NOT create a separate text element
-//    for shape labels. Standalone text elements are for floating annotations
-//    only.
-// 2. **Every connecting arrow must bind both ends.** An arrow that connects
-//    two shapes MUST set `start: { id: "..." }` to one shape's id and
-//    `end: { id: "..." }` to the other shape's id. The shapes must exist in
-//    the same call or already be on the canvas. Arrows without both bindings
-//    float free in space and are a bug.
+```
+1. **Label shapes via the `label` field on the shape itself.** To put text inside a rectangle, ellipse, or diamond, set the shape's `label: { text: "..." }` field. Do NOT create a separate text element for shape labels. Standalone text elements are for floating annotations only.
+2. **Every connecting arrow must bind both ends.** An arrow that connects two shapes MUST set `start: { id: "..." }` to one shape's id and `end: { id: "..." }` to the other shape's id. The shapes must exist in the same call or already be on the canvas. Arrows without both bindings float free in space and are a bug.
 ```
 
 And the matching DON'Ts and the worked example in the same prompt:
 
-```ts
-// - Do NOT create a separate text element to label a shape. Use the shape's
-//   `label` field. A free floating text element placed visually on top of a
-//   box is NOT a label and will not move with the box.
-// - Do NOT create arrows for shape to shape connections without setting
-//   `start` and `end`.
-// - Do NOT create arrows where one or both endpoints reference an id that
-//   doesn't exist in this call or on the canvas. The arrow will float.
+```
+- Do NOT create a separate text element to label a shape. Use the shape's `label` field. A free floating text element placed visually on top of a box is NOT a label and will not move with the box.
+- Do NOT create arrows for shape to shape connections without setting `start` and `end`.
+- Do NOT create arrows where one or both endpoints reference an id that doesn't exist in this call or on the canvas. The arrow will float.
 
-// Worked example. User: "draw a User -> API -> Database flow." Five elements:
-// 1. rect_user rectangle at (100, 100) 200x80, label.text="User"
-// 2. rect_api  rectangle at (380, 100) 200x80, label.text="API"
-// 3. rect_db   rectangle at (660, 100) 200x80, label.text="Database"
-// 4. arrow_user_api arrow with start.id="rect_user", end.id="rect_api"
-// 5. arrow_api_db   arrow with start.id="rect_api",  end.id="rect_db"
+Worked example. User: "draw a User -> API -> Database flow." Five elements:
+1. rect_user rectangle at (100, 100) 200x80, label.text="User"
+2. rect_api  rectangle at (380, 100) 200x80, label.text="API"
+3. rect_db   rectangle at (660, 100) 200x80, label.text="Database"
+4. arrow_user_api arrow with start.id="rect_user", end.id="rect_api"
+5. arrow_api_db   arrow with start.id="rect_api",  end.id="rect_db"
 ```
 
 Make `App.tsx`'s `stripNulls` recursive so nested null fields like `label: { fontSize: null }` don't choke the helper:
@@ -378,11 +366,11 @@ export function findOverlaps(elements) {
 }
 ```
 
-Carve outs to think about up front:
+Three eligibility rules to think about up front, deciding which elements can collide and which can't:
 
 1. Arrows and lines: their paths legitimately cross shapes when routing. Skip them.
 2. Container labels (text bound to a rectangle/ellipse/diamond): supposed to sit inside the parent. Skip them.
-3. **Arrow labels** (text bound to an arrow or line): sit ALONG the path, NOT inside anything, and routinely collide. *Do not skip them.* Iteration 5 catches this when the first carve out gets it wrong.
+3. **Arrow labels** (text bound to an arrow or line): sit ALONG the path, NOT inside anything, and routinely collide. *Do not skip them.* Iteration 5 catches this when the first version of the rule gets it wrong.
 
 `evals/scorers/noOverlaps.ts`:
 
@@ -419,22 +407,24 @@ Open the live app and ask for several connected boxes. The chat panel should sho
 
 **Hypothesis A:** the default rectangle in the system prompt is 200x80, too narrow for two word labels like "Auth Server." Bump the defaults in `agent-core.ts`:
 
-```ts
-// - Standard rectangle: 240x100 (wide enough for two word labels like "Auth Server")
-// - Standard ellipse / diamond: 140x140
-// - Horizontal stride between adjacent nodes: 320px
-// - Vertical stride between adjacent rows: 180px
-//
-// For a row of N nodes left to right: x = 100, 420, 740, 1060, 1380.
-// For a column of N nodes top to bottom: y = 100, 280, 460, 640.
+```
+- Standard rectangle: 240x100 (wide enough for two word labels like "Auth Server")
+- Standard ellipse / diamond: 140x140
+- Horizontal stride between adjacent nodes: 320px
+- Vertical stride between adjacent rows: 180px
+
+For a row of N nodes left to right: x = 100, 420, 740, 1060, 1380.
+For a column of N nodes top to bottom: y = 100, 280, 460, 640.
 ```
 
-**Hypothesis B:** the dataset is the lie this time. Two specific bugs in `evals/datasets/golden.json`:
+**Hypothesis B:** the dataset is the lie this time. Two specific problems with `evals/datasets/golden.json`:
 
 - The four `modify-*` cases ship seeds in the OLD vocabulary (`text: "Login"` directly on a rectangle). The simulator pushes seed shapes straight into `sim` unchanged, so those seed shapes count against `BoundLabels` forever. This is what iteration 2 found and deferred.
 - 23 cases, mostly small. `NoOverlaps` is high partly because nothing stresses layout.
 
-Update the dataset directly. Each modify seed gets rewritten in runtime form:
+Don't edit the original dataset. Make a new one. `golden.json` is the baseline we've been comparing against since lesson 4 and we want it to stay frozen. Copy it to `evals/datasets/golden_2.json`, then make two kinds of edits to the copy.
+
+First, rewrite each `modify-*` seed in runtime form: every labeled rect becomes a rect with `boundElements` plus a child text element with `containerId`, and every connecting arrow gets explicit `startBinding` / `endBinding`. Sample shape:
 
 ```json
 {
@@ -452,7 +442,7 @@ Update the dataset directly. Each modify seed gets rewritten in runtime form:
 }
 ```
 
-Connecting arrows in the seed get explicit bindings:
+Sample arrow:
 
 ```json
 {
@@ -464,7 +454,17 @@ Connecting arrows in the seed get explicit bindings:
 }
 ```
 
-Then add eight new layout stress cases: `create-architecture-jwt`, `create-sequence-oauth`, `create-flowchart-deploy`, `create-erd-blog`, `create-state-machine-order`, `create-long-labels`, `create-three-word-labels`, `create-tight-grid`. The tight grid case is deliberately packed and should NOT trip `NoOverlaps`, which validates the 4px epsilon carve out.
+Second, append eight new layout stress cases: `create-architecture-jwt`, `create-sequence-oauth`, `create-flowchart-deploy`, `create-erd-blog`, `create-state-machine-order`, `create-long-labels`, `create-three-word-labels`, `create-tight-grid`. The tight grid case is deliberately packed and should NOT trip `NoOverlaps`, which validates that the 4px epsilon in `overlaps.ts` is doing what we want.
+
+Point the eval at the new dataset:
+
+```ts
+const testCases: GoldenTestCase[] = JSON.parse(
+  readFileSync(join("evals", "datasets", "golden_2.json"), "utf-8")
+);
+```
+
+The full `golden_2.json` already lives in the repo so you don't have to type 800 lines of JSON in the workshop. Open it alongside `golden.json` and skim the differences.
 
 Run the eval. `BoundLabels` should move up because four cases that were structurally guaranteed to fail are now passing. `NoOverlaps` should ideally hold close to where it was, even though the dataset is substantially larger and explicitly stresses layout. If it does, the bigger sizing defaults are doing real work and not just clearing easy cases. If it dips, that is also useful information: the new stress cases found pressure the old dataset never had. Your numbers will not match mine. Direction is what matters.
 
@@ -476,7 +476,7 @@ Run the eval. `BoundLabels` should move up because four cases that were structur
 
 Open the live app. Ask for "a diagram showing how jwts work". `API / Resource Server` overflows its box. Arrow labels collide near the central node. Free floating annotation block at the bottom. The eval said 100%. Your eyes say no.
 
-**Hypothesis:** the carve out for bound text labels is too broad. The scorer skips any text element with `containerId` set, regardless of what KIND of element the parent is. Container labels (text inside a rectangle) are supposed to sit inside their parent. Arrow labels (text along an arrow path) are NOT inside anything and routinely collide.
+**Hypothesis:** the rule that skips bound text labels is too broad. The scorer skips any text element with `containerId` set, regardless of what KIND of element the parent is. Container labels (text inside a rectangle) are supposed to sit inside their parent. Arrow labels (text along an arrow path) are NOT inside anything and routinely collide.
 
 ```ts
 function isContainerLabel(el, typeById) {
@@ -489,30 +489,19 @@ function isContainerLabel(el, typeById) {
 
 While editing, tighten the system prompt with two new rules:
 
-```ts
-// **Sizing for long labels.** The default 240px width fits about two short
-// words. For longer labels you MUST widen the shape and stretch the stride
-// to match. Heuristic: `width = max(240, 14 * label_text_length)`. A label
-// like "API / Resource Server" is 21 characters, so width = max(240, 294)
-// = 294. When you widen a shape, also push every shape to its right by the
-// same amount so the layout stays clean.
+```
+**Sizing for long labels.** The default 240px width fits about two short words. For longer labels you MUST widen the shape and stretch the stride to match. Heuristic: `width = max(240, 14 * label_text_length)`. A label like "API / Resource Server" is 21 characters, so width = max(240, 294) = 294. When you widen a shape, also push every shape to its right by the same amount so the layout stays clean.
 
-// **Spacing for arrow labels.** Numbered messages like "1. Login request"
-// sit on the arrow midpoint and extend in both directions. If you have
-// arrow labels and your nodes are only 320px apart, the labels will collide
-// with each other and with the boxes. For diagrams with arrow labels,
-// increase the horizontal stride to at least 400px and prefer SHORT arrow
-// labels ("login", "verify") over long ones ("1. send login request to
-// auth server").
+**Spacing for arrow labels.** Numbered messages like "1. Login request" sit on the arrow midpoint and extend in both directions. If you have arrow labels and your nodes are only 320px apart, the labels will collide with each other and with the boxes. For diagrams with arrow labels, increase the horizontal stride to at least 400px and prefer SHORT arrow labels ("login", "verify") over long ones ("1. send login request to auth server").
 ```
 
-Run the eval. `NoOverlaps` may drop slightly because cases that were hidden by the broken carve out are now visible. **If the score goes down, that is the right direction.** The product did not get worse. The measurement got more honest.
+Run the eval. `NoOverlaps` may drop slightly because cases that the broken rule was hiding are now visible. **If the score goes down, that is the right direction.** The product did not get worse. The measurement got more honest.
 
 Re run the live smoke test. Every label fits inside its box. Chat shows `addElements` followed by `updateElements` cycles, which confirms the agent is consuming the overlap signal. One bug class left: three arrows fanning into the same node still cluster their labels. That needs more agent steps or a smarter feedback signal. Out of scope for this lesson.
 
 ## What this lesson actually taught
 
-Five iterations. Three of them were about the eval lying in different ways: the simulator (iteration 1), the dataset (iterations 2 and 4), and the scorer carve outs (iteration 5). Every layer of the eval got made honest at least once.
+Five iterations. Three of them were about the eval lying in different ways: the simulator (iteration 1), the dataset (iterations 2 and 4), and the scorer's eligibility rules (iteration 5). Every layer of the eval got made honest at least once.
 
 The pattern that holds across every iteration:
 

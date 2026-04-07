@@ -6,9 +6,7 @@
       "1 rectangle element",
       "The rectangle has a label or accompanying text element with content Hello"
     ],
-    "expectedKeywords": [
-      "hello"
-    ],
+    "expectedKeywords": ["hello"],
     "difficulty": "simple",
     "category": "create"
   },
@@ -32,11 +30,7 @@
       "2 arrow elements connecting them in sequence",
       "Layout flows left to right or top to bottom"
     ],
-    "expectedKeywords": [
-      "start",
-      "process",
-      "end"
-    ],
+    "expectedKeywords": ["start", "process", "end"],
     "difficulty": "simple",
     "category": "create"
   },
@@ -48,11 +42,7 @@
       "2 arrow elements originating from the diamond",
       "Two text labels Yes and No near the arrows"
     ],
-    "expectedKeywords": [
-      "decision",
-      "yes",
-      "no"
-    ],
+    "expectedKeywords": ["decision", "yes", "no"],
     "difficulty": "simple",
     "category": "create"
   },
@@ -64,14 +54,11 @@
       "Labels Top, Middle, Bottom in order",
       "Vertically aligned (same x, increasing y)"
     ],
-    "expectedKeywords": [
-      "top",
-      "middle",
-      "bottom"
-    ],
+    "expectedKeywords": ["top", "middle", "bottom"],
     "difficulty": "simple",
     "category": "create"
   },
+
   {
     "id": "create-medium-01",
     "input": "Draw a login flow: user enters credentials, system validates, if valid go to dashboard, if invalid show error",
@@ -81,12 +68,7 @@
       "Branching arrows from the decision",
       "Labels reflecting the prompt"
     ],
-    "expectedKeywords": [
-      "credentials",
-      "validate",
-      "dashboard",
-      "error"
-    ],
+    "expectedKeywords": ["credentials", "validate", "dashboard", "error"],
     "difficulty": "medium",
     "category": "create"
   },
@@ -98,11 +80,7 @@
       "2 arrows or lines connecting them",
       "Connection labels indicate the relationship"
     ],
-    "expectedKeywords": [
-      "users",
-      "posts",
-      "comments"
-    ],
+    "expectedKeywords": ["users", "posts", "comments"],
     "difficulty": "medium",
     "category": "create"
   },
@@ -114,12 +92,7 @@
       "Arrows showing request flow direction",
       "Two web servers visually grouped or aligned"
     ],
-    "expectedKeywords": [
-      "browser",
-      "load balancer",
-      "web server",
-      "database"
-    ],
+    "expectedKeywords": ["browser", "load balancer", "web server", "database"],
     "difficulty": "medium",
     "category": "create"
   },
@@ -131,11 +104,7 @@
       "Arrows showing the direction of each message",
       "Order is preserved"
     ],
-    "expectedKeywords": [
-      "client",
-      "server",
-      "database"
-    ],
+    "expectedKeywords": ["client", "server", "database"],
     "difficulty": "medium",
     "category": "create"
   },
@@ -147,14 +116,11 @@
       "3 arrows showing transitions between states",
       "Cyclic structure"
     ],
-    "expectedKeywords": [
-      "red",
-      "yellow",
-      "green"
-    ],
+    "expectedKeywords": ["red", "yellow", "green"],
     "difficulty": "medium",
     "category": "create"
   },
+
   {
     "id": "create-complex-01",
     "input": "Draw an org chart for a company: CEO at top, 3 VPs reporting to CEO (Engineering, Sales, Marketing), each VP has 3 directors under them",
@@ -165,12 +131,7 @@
       "12 connections total",
       "Hierarchical layout"
     ],
-    "expectedKeywords": [
-      "ceo",
-      "engineering",
-      "sales",
-      "marketing"
-    ],
+    "expectedKeywords": ["ceo", "engineering", "sales", "marketing"],
     "difficulty": "hard",
     "category": "create"
   },
@@ -184,14 +145,7 @@
       "Arrows from gateway to each service and from each service to its database",
       "Additional arrow from Order Service to Payment Service"
     ],
-    "expectedKeywords": [
-      "api gateway",
-      "auth",
-      "user",
-      "order",
-      "payment",
-      "database"
-    ],
+    "expectedKeywords": ["api gateway", "auth", "user", "order", "payment", "database"],
     "difficulty": "hard",
     "category": "create"
   },
@@ -204,12 +158,7 @@
       "At least one decision point for payment validation",
       "Error path that loops back or shows failure handling"
     ],
-    "expectedKeywords": [
-      "cart",
-      "shipping",
-      "payment",
-      "confirmation"
-    ],
+    "expectedKeywords": ["cart", "shipping", "payment", "confirmation"],
     "difficulty": "hard",
     "category": "create"
   },
@@ -224,16 +173,11 @@
       "1 internet box or label",
       "Connecting lines between all components"
     ],
-    "expectedKeywords": [
-      "router",
-      "switch",
-      "computer",
-      "printer",
-      "internet"
-    ],
+    "expectedKeywords": ["router", "switch", "computer", "printer", "internet"],
     "difficulty": "hard",
     "category": "create"
   },
+
   {
     "id": "modify-01",
     "input": "make the login box red",
@@ -241,54 +185,8 @@
       "userPrompt": "draw two rectangles labeled login and database",
       "assistantConfirmation": "Done. I drew a login box on the left and a database box on the right.",
       "elements": [
-        {
-          "id": "rect_login",
-          "type": "rectangle",
-          "x": 100,
-          "y": 100,
-          "width": 200,
-          "height": 80,
-          "boundElements": [
-            {
-              "id": "rect_login_label",
-              "type": "text"
-            }
-          ]
-        },
-        {
-          "id": "rect_login_label",
-          "type": "text",
-          "x": 100,
-          "y": 100,
-          "width": 200,
-          "height": 80,
-          "text": "login",
-          "containerId": "rect_login"
-        },
-        {
-          "id": "rect_db",
-          "type": "rectangle",
-          "x": 500,
-          "y": 100,
-          "width": 200,
-          "height": 80,
-          "boundElements": [
-            {
-              "id": "rect_db_label",
-              "type": "text"
-            }
-          ]
-        },
-        {
-          "id": "rect_db_label",
-          "type": "text",
-          "x": 500,
-          "y": 100,
-          "width": 200,
-          "height": 80,
-          "text": "database",
-          "containerId": "rect_db"
-        }
+        { "id": "rect_login", "type": "rectangle", "x": 100, "y": 100, "width": 200, "height": 80, "text": "login" },
+        { "id": "rect_db", "type": "rectangle", "x": 500, "y": 100, "width": 200, "height": 80, "text": "database" }
       ]
     },
     "expectedCharacteristics": [
@@ -296,10 +194,7 @@
       "rect_login backgroundColor changed to a red shade",
       "rect_db unchanged"
     ],
-    "preservedIds": [
-      "rect_login",
-      "rect_db"
-    ],
+    "preservedIds": ["rect_login", "rect_db"],
     "difficulty": "simple",
     "category": "modify"
   },
@@ -310,54 +205,8 @@
       "userPrompt": "draw two rectangles labeled login and database",
       "assistantConfirmation": "Done. login and database boxes are on the canvas.",
       "elements": [
-        {
-          "id": "rect_login",
-          "type": "rectangle",
-          "x": 100,
-          "y": 100,
-          "width": 200,
-          "height": 80,
-          "boundElements": [
-            {
-              "id": "rect_login_label",
-              "type": "text"
-            }
-          ]
-        },
-        {
-          "id": "rect_login_label",
-          "type": "text",
-          "x": 100,
-          "y": 100,
-          "width": 200,
-          "height": 80,
-          "text": "login",
-          "containerId": "rect_login"
-        },
-        {
-          "id": "rect_db",
-          "type": "rectangle",
-          "x": 500,
-          "y": 100,
-          "width": 200,
-          "height": 80,
-          "boundElements": [
-            {
-              "id": "rect_db_label",
-              "type": "text"
-            }
-          ]
-        },
-        {
-          "id": "rect_db_label",
-          "type": "text",
-          "x": 500,
-          "y": 100,
-          "width": 200,
-          "height": 80,
-          "text": "database",
-          "containerId": "rect_db"
-        }
+        { "id": "rect_login", "type": "rectangle", "x": 100, "y": 100, "width": 200, "height": 80, "text": "login" },
+        { "id": "rect_db", "type": "rectangle", "x": 500, "y": 100, "width": 200, "height": 80, "text": "database" }
       ]
     },
     "expectedCharacteristics": [
@@ -365,10 +214,7 @@
       "1 new arrow element added",
       "Arrow visually connects rect_login to rect_db (or has bindings between them)"
     ],
-    "preservedIds": [
-      "rect_login",
-      "rect_db"
-    ],
+    "preservedIds": ["rect_login", "rect_db"],
     "difficulty": "medium",
     "category": "modify"
   },
@@ -379,114 +225,11 @@
       "userPrompt": "draw a flowchart with Start, Process, and End",
       "assistantConfirmation": "Here's the Start, Process, End flowchart.",
       "elements": [
-        {
-          "id": "rect_start",
-          "type": "rectangle",
-          "x": 100,
-          "y": 100,
-          "width": 160,
-          "height": 60,
-          "boundElements": [
-            {
-              "id": "rect_start_label",
-              "type": "text"
-            }
-          ]
-        },
-        {
-          "id": "rect_start_label",
-          "type": "text",
-          "x": 100,
-          "y": 100,
-          "width": 160,
-          "height": 60,
-          "text": "Start",
-          "containerId": "rect_start"
-        },
-        {
-          "id": "rect_process",
-          "type": "rectangle",
-          "x": 320,
-          "y": 100,
-          "width": 160,
-          "height": 60,
-          "boundElements": [
-            {
-              "id": "rect_process_label",
-              "type": "text"
-            }
-          ]
-        },
-        {
-          "id": "rect_process_label",
-          "type": "text",
-          "x": 320,
-          "y": 100,
-          "width": 160,
-          "height": 60,
-          "text": "Process",
-          "containerId": "rect_process"
-        },
-        {
-          "id": "rect_end",
-          "type": "rectangle",
-          "x": 540,
-          "y": 100,
-          "width": 160,
-          "height": 60,
-          "boundElements": [
-            {
-              "id": "rect_end_label",
-              "type": "text"
-            }
-          ]
-        },
-        {
-          "id": "rect_end_label",
-          "type": "text",
-          "x": 540,
-          "y": 100,
-          "width": 160,
-          "height": 60,
-          "text": "End",
-          "containerId": "rect_end"
-        },
-        {
-          "id": "arrow_1",
-          "type": "arrow",
-          "x": 260,
-          "y": 130,
-          "width": 60,
-          "height": 0,
-          "startBinding": {
-            "elementId": "rect_start",
-            "focus": 0,
-            "gap": 8
-          },
-          "endBinding": {
-            "elementId": "rect_process",
-            "focus": 0,
-            "gap": 8
-          }
-        },
-        {
-          "id": "arrow_2",
-          "type": "arrow",
-          "x": 480,
-          "y": 130,
-          "width": 60,
-          "height": 0,
-          "startBinding": {
-            "elementId": "rect_process",
-            "focus": 0,
-            "gap": 8
-          },
-          "endBinding": {
-            "elementId": "rect_end",
-            "focus": 0,
-            "gap": 8
-          }
-        }
+        { "id": "rect_start", "type": "rectangle", "x": 100, "y": 100, "width": 160, "height": 60, "text": "Start" },
+        { "id": "rect_process", "type": "rectangle", "x": 320, "y": 100, "width": 160, "height": 60, "text": "Process" },
+        { "id": "rect_end", "type": "rectangle", "x": 540, "y": 100, "width": 160, "height": 60, "text": "End" },
+        { "id": "arrow_1", "type": "arrow", "x": 260, "y": 130, "width": 60, "height": 0 },
+        { "id": "arrow_2", "type": "arrow", "x": 480, "y": 130, "width": 60, "height": 0 }
       ]
     },
     "expectedCharacteristics": [
@@ -495,18 +238,8 @@
       "rect_start and rect_end unchanged",
       "Arrows still present"
     ],
-    "expectedKeywords": [
-      "start",
-      "validate",
-      "end"
-    ],
-    "preservedIds": [
-      "rect_start",
-      "rect_process",
-      "rect_end",
-      "arrow_1",
-      "arrow_2"
-    ],
+    "expectedKeywords": ["start", "validate", "end"],
+    "preservedIds": ["rect_start", "rect_process", "rect_end", "arrow_1", "arrow_2"],
     "difficulty": "medium",
     "category": "modify"
   },
@@ -517,72 +250,9 @@
       "userPrompt": "draw an API box connected to a Database box",
       "assistantConfirmation": "Done. API on the left, Database on the right, with an arrow between them.",
       "elements": [
-        {
-          "id": "rect_api",
-          "type": "rectangle",
-          "x": 100,
-          "y": 100,
-          "width": 160,
-          "height": 60,
-          "boundElements": [
-            {
-              "id": "rect_api_label",
-              "type": "text"
-            }
-          ]
-        },
-        {
-          "id": "rect_api_label",
-          "type": "text",
-          "x": 100,
-          "y": 100,
-          "width": 160,
-          "height": 60,
-          "text": "API",
-          "containerId": "rect_api"
-        },
-        {
-          "id": "rect_db",
-          "type": "rectangle",
-          "x": 500,
-          "y": 100,
-          "width": 160,
-          "height": 60,
-          "boundElements": [
-            {
-              "id": "rect_db_label",
-              "type": "text"
-            }
-          ]
-        },
-        {
-          "id": "rect_db_label",
-          "type": "text",
-          "x": 500,
-          "y": 100,
-          "width": 160,
-          "height": 60,
-          "text": "Database",
-          "containerId": "rect_db"
-        },
-        {
-          "id": "arrow_api_db",
-          "type": "arrow",
-          "x": 260,
-          "y": 130,
-          "width": 240,
-          "height": 0,
-          "startBinding": {
-            "elementId": "rect_api",
-            "focus": 0,
-            "gap": 8
-          },
-          "endBinding": {
-            "elementId": "rect_db",
-            "focus": 0,
-            "gap": 8
-          }
-        }
+        { "id": "rect_api", "type": "rectangle", "x": 100, "y": 100, "width": 160, "height": 60, "text": "API" },
+        { "id": "rect_db", "type": "rectangle", "x": 500, "y": 100, "width": 160, "height": 60, "text": "Database" },
+        { "id": "arrow_api_db", "type": "arrow", "x": 260, "y": 130, "width": 240, "height": 0 }
       ]
     },
     "expectedCharacteristics": [
@@ -591,18 +261,12 @@
       "API now connects to Cache and Cache connects to Database",
       "Direct API to Database arrow removed or replaced"
     ],
-    "expectedKeywords": [
-      "api",
-      "cache",
-      "database"
-    ],
-    "preservedIds": [
-      "rect_api",
-      "rect_db"
-    ],
+    "expectedKeywords": ["api", "cache", "database"],
+    "preservedIds": ["rect_api", "rect_db"],
     "difficulty": "hard",
     "category": "modify"
   },
+
   {
     "id": "domain-01",
     "input": "Draw the OAuth 2.0 authorization code flow",
@@ -653,15 +317,11 @@
       "Service box pointing to the Pods via label selector",
       "Arrows or visual containment showing Deployment manages Pods and Service routes to Pods"
     ],
-    "expectedKeywords": [
-      "deployment",
-      "pod",
-      "service",
-      "replica"
-    ],
+    "expectedKeywords": ["deployment", "pod", "service", "replica"],
     "difficulty": "hard",
     "category": "domain"
   },
+
   {
     "id": "edge-01",
     "input": "draw something",
@@ -681,149 +341,5 @@
     ],
     "difficulty": "edge",
     "category": "edge"
-  },
-  {
-    "id": "create-architecture-jwt",
-    "input": "Draw a JWT auth flow with User, Auth Server, Resource API, Database, and Token Storage",
-    "expectedCharacteristics": [
-      "5 labeled boxes",
-      "Arrows showing the flow from User through Auth Server to Resource API and Database",
-      "Token Storage connected to Auth Server"
-    ],
-    "expectedKeywords": [
-      "user",
-      "auth server",
-      "resource api",
-      "database",
-      "token storage"
-    ],
-    "difficulty": "medium",
-    "category": "create"
-  },
-  {
-    "id": "create-sequence-oauth",
-    "input": "Draw an OAuth sequence diagram with these actors: User, Browser, Auth Provider, App Server, Resource Server",
-    "expectedCharacteristics": [
-      "5 labeled actor rectangles across the top",
-      "Vertical lifelines below each actor",
-      "Numbered messages between adjacent lifelines"
-    ],
-    "expectedKeywords": [
-      "user",
-      "browser",
-      "auth provider",
-      "app server",
-      "resource server"
-    ],
-    "difficulty": "hard",
-    "category": "create"
-  },
-  {
-    "id": "create-flowchart-deploy",
-    "input": "Draw a deployment flowchart with these steps: build, test, lint, package, deploy, smoke test, with a rollback path on failure",
-    "expectedCharacteristics": [
-      "Rectangles for each step",
-      "At least one diamond decision",
-      "Arrows top to bottom",
-      "Rollback branch"
-    ],
-    "expectedKeywords": [
-      "build",
-      "test",
-      "lint",
-      "package",
-      "deploy",
-      "smoke",
-      "rollback"
-    ],
-    "difficulty": "hard",
-    "category": "create"
-  },
-  {
-    "id": "create-erd-blog",
-    "input": "Draw an entity relationship diagram for a blog with these entities: User, Post, Comment, Tag, Category",
-    "expectedCharacteristics": [
-      "5 labeled entity rectangles",
-      "Lines connecting related entities",
-      "Spread out enough to be readable"
-    ],
-    "expectedKeywords": [
-      "user",
-      "post",
-      "comment",
-      "tag",
-      "category"
-    ],
-    "difficulty": "medium",
-    "category": "create"
-  },
-  {
-    "id": "create-state-machine-order",
-    "input": "Draw a state machine for an order with these states: pending, paid, shipped, delivered, cancelled, refunded",
-    "expectedCharacteristics": [
-      "6 labeled ellipses",
-      "Arrows labeled with the transition trigger",
-      "Cancelled and refunded reachable from earlier states"
-    ],
-    "expectedKeywords": [
-      "pending",
-      "paid",
-      "shipped",
-      "delivered",
-      "cancelled",
-      "refunded"
-    ],
-    "difficulty": "hard",
-    "category": "create"
-  },
-  {
-    "id": "create-long-labels",
-    "input": "Draw an architecture diagram with these services: Authentication Service, Notification Service, Payment Processor, Database Cluster",
-    "expectedCharacteristics": [
-      "4 labeled rectangles",
-      "Each box wide enough to fit its full label without clipping",
-      "No overlapping shapes"
-    ],
-    "expectedKeywords": [
-      "authentication",
-      "notification",
-      "payment",
-      "database"
-    ],
-    "difficulty": "medium",
-    "category": "create"
-  },
-  {
-    "id": "create-three-word-labels",
-    "input": "Draw a system diagram with these components: Real Time Analytics, Customer Data Platform, Event Stream Processor",
-    "expectedCharacteristics": [
-      "3 labeled rectangles",
-      "Each box wide enough for its three-word label",
-      "Connected with arrows showing data flow"
-    ],
-    "expectedKeywords": [
-      "real time",
-      "customer data",
-      "event stream"
-    ],
-    "difficulty": "medium",
-    "category": "create"
-  },
-  {
-    "id": "create-tight-grid",
-    "input": "Draw a 2x2 grid of labeled boxes: top-left A, top-right B, bottom-left C, bottom-right D, sharing edges",
-    "expectedCharacteristics": [
-      "4 labeled rectangles",
-      "Arranged as a 2x2 grid",
-      "Boxes share edges (intentional flush layout)"
-    ],
-    "expectedKeywords": [
-      "a",
-      "b",
-      "c",
-      "d"
-    ],
-    "difficulty": "simple",
-    "category": "create"
   }
 ]
