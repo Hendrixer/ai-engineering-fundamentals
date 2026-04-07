@@ -1,86 +1,139 @@
 import { z } from "zod";
 
-// Shared element schema. The descriptions on each field aren't just for
-// validation, they're part of the prompt the model reads when it loads the
-// tool. Use them to teach the model how Excalidraw actually works, especially
-// the gotchas it would otherwise get wrong (text labels, arrow bindings).
+// Element schema for the agent's canvas tools.
 //
-// Nullable rather than optional so OpenAI strict mode stays on. Null means
-// "not applicable for this element type" (e.g. points on a rectangle).
+// IMPORTANT: this schema describes the INPUT format that
+// `convertToExcalidrawElements` (the Excalidraw skeleton helper) consumes,
+// NOT the runtime element shape that lives on the canvas afterwards. The
+// helper has its own vocabulary:
+//
+//   - To label a shape (rectangle, ellipse, diamond), set `label: { text }`
+//     directly on the shape. Do NOT create a separate text element. The
+//     helper will produce the child text element and wire up `containerId`
+//     and `boundElements` for you.
+//   - To bind an arrow between two shapes, set `start: { id }` and
+//     `end: { id }` on the arrow. Do NOT use `startBinding` / `endBinding`,
+//     those are runtime field names that the helper does not consume.
+//
+// Encoding the labeling and binding rules in the schema (rather than in
+// prose in the system prompt) means the model literally cannot construct an
+// element that drops its label or floats its arrow. The structural
+// invariants are enforced by the type system.
+//
+// Nullable rather than optional throughout so OpenAI strict mode stays on.
+// Null means "leave at the Excalidraw default" and is stripped client side
+// before being handed to the helper.
 
-export const elementSchema = z.object({
-  id: z
-    .string()
-    .describe(
-      "Unique identifier. Pick concise meaningful ids like 'rect_login' or 'arrow_login_db'. Other elements (text labels, arrow bindings) reference shapes by id, so the id must be unique within the canvas and stable across calls."
-    ),
-  type: z
-    .enum(["rectangle", "ellipse", "diamond", "text", "arrow", "line"])
-    .describe(
-      "Element type. rectangle/ellipse/diamond are container shapes, text is a label, arrow is a directed connection, line is an undirected connection."
-    ),
-  x: z.number().describe("X position in pixels"),
-  y: z.number().describe("Y position in pixels"),
-  width: z.number().describe("Width in pixels. Must be at least 20."),
-  height: z.number().describe("Height in pixels. Must be at least 20."),
-
-  strokeColor: z.string().nullable().describe("Stroke color (hex). Null for default '#1e1e1e'."),
-  backgroundColor: z.string().nullable().describe("Fill color. Null for default 'transparent'."),
+const styling = {
+  strokeColor: z.string().nullable().describe("Hex stroke color. Null for default '#1e1e1e'."),
+  backgroundColor: z.string().nullable().describe("Hex fill color. Null for transparent."),
   fillStyle: z.enum(["solid", "hachure", "cross-hatch"]).nullable(),
   strokeWidth: z.number().nullable(),
   roughness: z.number().nullable().describe("0 for clean, 1 for sketchy. Null for default."),
   opacity: z.number().nullable(),
+};
 
-  text: z
-    .string()
-    .nullable()
-    .describe(
-      "REQUIRED for text elements (the label content). FORBIDDEN on rectangle/ellipse/diamond: setting text on a shape does NOT render anything inside the box, you must create a separate text element with containerId pointing to the shape's id. Null for non text elements."
-    ),
-  fontSize: z.number().nullable().describe("Font size for text elements. Null for non text."),
-  fontFamily: z.number().nullable().describe("1=Virgil, 2=Helvetica, 3=Cascadia. Null for default."),
-  textAlign: z.enum(["left", "center", "right"]).nullable(),
-  containerId: z
-    .string()
-    .nullable()
-    .describe(
-      "TEXT elements only. Set this to the id of the rectangle, ellipse, or diamond this label belongs INSIDE. The shape must exist in the same addElements call or already on the canvas. When containerId is set, Excalidraw automatically centers the text inside the container. This is the ONLY way to label a shape. Null for shapes and standalone text."
-    ),
+const labelSchema = z
+  .object({
+    text: z.string().describe("The label text rendered inside the shape or on the arrow."),
+    fontSize: z.number().nullable(),
+    textAlign: z.enum(["left", "center", "right"]).nullable(),
+  })
+  .describe(
+    "Label rendered inside this shape (or on this arrow). Excalidraw centers the text inside the container automatically and creates the bound text element for you. This is the ONLY way to put text inside a box. Null for unlabeled shapes."
+  );
 
-  points: z
-    .array(z.array(z.number()))
-    .nullable()
+const baseFields = {
+  id: z
+    .string()
     .describe(
-      "Arrow/line shape only. Array of [x,y] points relative to the element's x,y. Usually you can leave this null and let the bindings determine the path. Null for non line shapes."
+      "Unique, concise, meaningful id like 'rect_login' or 'arrow_user_api'. Other elements reference this id, so it must be unique within the canvas and stable across calls."
     ),
-  startBinding: z
-    .object({
-      elementId: z
-        .string()
-        .describe(
-          "Id of the shape this arrow starts at. The shape must exist in the same call or already on the canvas. If the id is wrong or missing, the arrow floats free in space, which is always a bug."
-        ),
-      focus: z.number().describe("0 for center attach. Use 0 unless you have a reason."),
-      gap: z.number().describe("Pixels of gap between the arrow and the shape edge. Use 8."),
-    })
-    .nullable()
-    .describe(
-      "REQUIRED for arrows that connect two shapes. Set both startBinding AND endBinding for any connecting arrow. Null for lines and standalone arrows."
-    ),
-  endBinding: z
-    .object({
-      elementId: z
-        .string()
-        .describe(
-          "Id of the shape this arrow ends at. Same rules as startBinding.elementId."
-        ),
-      focus: z.number().describe("0 for center attach."),
-      gap: z.number().describe("8 for normal spacing."),
-    })
-    .nullable()
-    .describe(
-      "REQUIRED for arrows that connect two shapes. Pair with startBinding."
-    ),
+  x: z.number().describe("X position in pixels"),
+  y: z.number().describe("Y position in pixels"),
+  width: z.number().describe("Width in pixels. At least 20."),
+  height: z.number().describe("Height in pixels. At least 20."),
+};
+
+// Container shapes share an identical structure, only the type literal
+// differs. Generating them from a helper would be DRYer but obscures the
+// schema for students reading the file, so we spell each one out.
+
+const rectangleSchema = z.object({
+  type: z.literal("rectangle"),
+  ...baseFields,
+  label: labelSchema.nullable(),
+  ...styling,
 });
+
+const ellipseSchema = z.object({
+  type: z.literal("ellipse"),
+  ...baseFields,
+  label: labelSchema.nullable(),
+  ...styling,
+});
+
+const diamondSchema = z.object({
+  type: z.literal("diamond"),
+  ...baseFields,
+  label: labelSchema.nullable(),
+  ...styling,
+});
+
+const endpointSchema = z
+  .object({
+    id: z
+      .string()
+      .describe(
+        "Id of the shape this end of the arrow attaches to. The shape must exist in the same call or already on the canvas."
+      ),
+  })
+  .describe("Arrow endpoint binding. Set both start AND end for any arrow that connects two shapes.");
+
+const arrowSchema = z.object({
+  type: z.literal("arrow"),
+  ...baseFields,
+  start: endpointSchema.nullable(),
+  end: endpointSchema.nullable(),
+  label: labelSchema
+    .nullable()
+    .describe(
+      "Optional label rendered on the arrow itself, e.g. 'yes', 'no', '1. login'. Null for unlabeled arrows."
+    ),
+  ...styling,
+});
+
+const lineSchema = z.object({
+  type: z.literal("line"),
+  ...baseFields,
+  start: endpointSchema.nullable(),
+  end: endpointSchema.nullable(),
+  ...styling,
+});
+
+// Standalone text. Use this ONLY for floating annotations that are not
+// attached to a shape. To label a shape, set `label` on the shape itself.
+const textSchema = z.object({
+  type: z.literal("text"),
+  ...baseFields,
+  text: z.string().describe("The text content. Required."),
+  fontSize: z.number().nullable(),
+  textAlign: z.enum(["left", "center", "right"]).nullable(),
+  ...styling,
+});
+
+// NOTE: we use z.union, not z.discriminatedUnion. They look interchangeable
+// but compile to different JSON Schema: discriminatedUnion produces `oneOf`,
+// which OpenAI's strict mode rejects with "'oneOf' is not permitted."
+// z.union produces `anyOf`, which strict mode accepts. The model still
+// picks the right branch by the `type` literal either way.
+export const elementSchema = z.union([
+  rectangleSchema,
+  ellipseSchema,
+  diamondSchema,
+  arrowSchema,
+  lineSchema,
+  textSchema,
+]);
 
 export type ElementInput = z.infer<typeof elementSchema>;
