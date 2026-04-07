@@ -264,29 +264,191 @@ const { messages, sendMessage, status } = useAgentChat({
 
 That's all of it. The tool **is** the apply, and the apply returns a real result the agent can read on its next step. If `removeElements` was called on an id that didn't exist, the agent finds out from the result and can react.
 
-### Delete the lesson 6 plumbing
+### The lesson 6 plumbing goes away
 
-Several pieces of `App.tsx` exist only because lesson 6 had to ship the canvas state to the worker on every turn and watch tool result messages to apply them to the scene. With everything client side, all of it goes away.
+Lesson 6 attached canvas state to every user message via a `data-canvas-state` part, then watched tool result messages on the client to apply them to the scene. With everything client side, both halves disappear. Here's what `App.tsx`, `agent.ts`, and `agent-core.ts` look like after the cleanup. Replace the old contents with these.
 
-In `src/App.tsx`, delete:
+**`src/App.tsx`** (full file):
 
-- The `useMemo` import (no longer used).
-- The `appliedToolCalls` ref. Tool calls run exactly once now, no double apply guard needed.
-- The entire `sendWithCanvas` wrapper. We pass the raw `sendMessage` to `<ChatPanel>` instead.
-- The entire `useEffect` that watches `messages` for `tool-generateDiagram` / `tool-modifyDiagram` parts and applies them to the scene. Replaced by `onToolCall`.
-- The `import { serializeCanvasState } from "./context/canvas-state"` line stays, because `onToolCall`'s `queryCanvas` branch still uses it.
+```tsx
+import { useState, useCallback, useEffect, useRef } from "react";
+import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
+import {
+  convertToExcalidrawElements,
+  CaptureUpdateAction,
+  newElementWith,
+} from "@excalidraw/excalidraw";
+import { useAgent } from "agents/react";
+import { useAgentChat } from "@cloudflare/ai-chat/react";
+import Canvas from "./components/Canvas";
+import ChatPanel from "./components/chat/ChatPanel";
+import { serializeCanvasState } from "./context/canvas-state";
+import "./App.css";
 
-In `src/agent.ts`, delete:
+const sessionId = crypto.randomUUID();
 
-- `extractCanvasState` and the `CanvasStatePart` type.
-- The `canvasState` argument passed to `streamAgent`.
+function stripNulls(obj: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v !== null) out[k] = v;
+  }
+  return out;
+}
 
-In `src/agent-core.ts`, delete:
+export default function App() {
+  const [excalidrawAPI, setExcalidrawAPI] =
+    useState<ExcalidrawImperativeAPI | null>(null);
+  const [theme, setTheme] = useState<"light" | "dark">("light");
 
-- `buildSystem` and the `# Current canvas state` injection.
-- The `canvasState` parameter on `AgentArgs` (the streaming variant; the eval variant gets a new `seedCanvas` parameter, see section 7).
+  const excalidrawAPIRef = useRef<ExcalidrawImperativeAPI | null>(null);
+  useEffect(() => {
+    excalidrawAPIRef.current = excalidrawAPI;
+  }, [excalidrawAPI]);
 
-You can also delete `src/context/canvas-state.ts` entirely... almost. The `serializeCanvasState` function is still used by the browser's `queryCanvas` handler and by the eval's headless `queryCanvas` simulator. Move the file or leave it where it is, but the function is still load bearing.
+  const handleApiReady = useCallback((api: ExcalidrawImperativeAPI) => {
+    setExcalidrawAPI(api);
+  }, []);
+
+  const agent = useAgent({ agent: "design-agent", name: sessionId });
+
+  const { messages, sendMessage, status } = useAgentChat({
+    agent,
+    onToolCall: async ({ toolCall, addToolOutput }) => {
+      const api = excalidrawAPIRef.current;
+      if (!api) {
+        addToolOutput({ toolCallId: toolCall.toolCallId, output: { error: "canvas not ready" } });
+        return;
+      }
+
+      if (toolCall.toolName === "queryCanvas") {
+        addToolOutput({
+          toolCallId: toolCall.toolCallId,
+          output: { summary: serializeCanvasState(api.getSceneElements() as unknown[]) },
+        });
+        return;
+      }
+
+      if (toolCall.toolName === "addElements") {
+        const { elements } = toolCall.input as { elements: Record<string, unknown>[] };
+        const cleaned = elements.map(stripNulls);
+        const newOnes = convertToExcalidrawElements(cleaned as never, { regenerateIds: false });
+        const next = [...api.getSceneElements(), ...newOnes];
+        api.updateScene({ elements: next, captureUpdate: CaptureUpdateAction.IMMEDIATELY });
+        api.scrollToContent(next, { fitToContent: true });
+        addToolOutput({ toolCallId: toolCall.toolCallId, output: { added: newOnes.length } });
+        return;
+      }
+
+      if (toolCall.toolName === "updateElements") {
+        const { updates } = toolCall.input as {
+          updates: { id: string; fields: Record<string, unknown> }[];
+        };
+        const byId = new Map(updates.map((u) => [u.id, stripNulls(u.fields)]));
+        const next = api.getSceneElements().map((el) => {
+          const fields = byId.get(el.id);
+          return fields && Object.keys(fields).length > 0
+            ? newElementWith(el, fields as never)
+            : el;
+        });
+        api.updateScene({ elements: next, captureUpdate: CaptureUpdateAction.IMMEDIATELY });
+        addToolOutput({ toolCallId: toolCall.toolCallId, output: { updated: byId.size } });
+        return;
+      }
+
+      if (toolCall.toolName === "removeElements") {
+        const { ids } = toolCall.input as { ids: string[] };
+        const remove = new Set(ids);
+        const next = api.getSceneElements().filter((el) => !remove.has(el.id));
+        api.updateScene({ elements: next, captureUpdate: CaptureUpdateAction.IMMEDIATELY });
+        addToolOutput({ toolCallId: toolCall.toolCallId, output: { removed: remove.size } });
+        return;
+      }
+    },
+  });
+
+  return (
+    <div className={`app ${theme}`}>
+      <div className="canvas-container">
+        <Canvas onApiReady={handleApiReady} onThemeChange={setTheme} />
+      </div>
+      <ChatPanel
+        messages={messages}
+        sendMessage={sendMessage}
+        status={status}
+      />
+      <a href="#viewer" className="viewer-launch" title="Open diagram viewer for human scoring">
+        viewer
+      </a>
+    </div>
+  );
+}
+```
+
+`useMemo`, `appliedToolCalls`, the `sendWithCanvas` wrapper, and the `useEffect` that scanned messages for tool result parts are all gone. `serializeCanvasState` survives because the new `queryCanvas` handler uses it.
+
+**`src/agent.ts`** (full file):
+
+```ts
+import { AIChatAgent } from "@cloudflare/ai-chat";
+import { convertToModelMessages } from "ai";
+import { createOpenAI } from "@ai-sdk/openai";
+import { streamAgent } from "./agent-core";
+
+interface Env extends Cloudflare.Env {
+  OPENAI_API_KEY: string;
+  TAVILY_API_KEY: string;
+}
+
+export class DesignAgent extends AIChatAgent<Env> {
+  async onChatMessage() {
+    const openai = createOpenAI({ apiKey: this.env.OPENAI_API_KEY });
+    const model = openai("gpt-5.4-mini");
+    const messages = await convertToModelMessages(this.messages);
+
+    const result = streamAgent({
+      model,
+      messages,
+      env: { TAVILY_API_KEY: this.env.TAVILY_API_KEY },
+    });
+
+    return result.toUIMessageStreamResponse();
+  }
+}
+```
+
+`extractCanvasState`, the `CanvasStatePart` type, and the `canvasState` argument to `streamAgent` are gone. The agent is now a four line stub: parse messages, hand to the model, return.
+
+**`src/agent-core.ts`** streaming variant only (the eval variant `runAgent` gets covered separately in section 7):
+
+```ts
+interface AgentArgs {
+  model: LanguageModel;
+  messages: ModelMessage[];
+  system?: string;
+  maxSteps?: number;
+  env?: { TAVILY_API_KEY?: string };
+}
+
+export function streamAgent({
+  model,
+  messages,
+  system = SYSTEM_PROMPT,
+  maxSteps = 8,
+  env = {},
+}: AgentArgs) {
+  return streamText({
+    model,
+    system,
+    messages,
+    tools: buildTools(env),
+    stopWhen: stepCountIs(maxSteps),
+  });
+}
+```
+
+`buildSystem` is gone, the `# Current canvas state` injection is gone, the `canvasState` parameter on `AgentArgs` is gone. The system prompt is the same string for every request now. Canvas state arrives via the `queryCanvas` tool when (and only when) the model decides it needs it.
+
+`src/context/canvas-state.ts` stays where it is: `serializeCanvasState` is still used by the browser's `queryCanvas` handler and by the eval's headless `queryCanvas` simulator.
 
 ## 5. searchWeb (server side)
 
