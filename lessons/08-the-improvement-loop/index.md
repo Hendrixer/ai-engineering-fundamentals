@@ -1,6 +1,8 @@
 # The Improvement Loop
 
-Lesson 7 finished the agent's tools. This lesson is not about a new technique. It is about *the loop you run when something is wrong*. By the end of the lesson the agent draws better diagrams and the eval scores reflect it. The bigger thing to take away is the loop itself, because every lesson after this one is just another turn of the same wheel.
+Lesson 7 finished the agent's tools. This lesson is not about a new technique. It is about *the loop you run when something is wrong*. Every lesson after this one is just another turn of the same wheel.
+
+A note before we start: the eval numbers in this lesson will not match yours exactly. Models drift, sampling is non deterministic, and the dataset is small enough that one flaky case moves a percentage point. This is also more art than science. What matters is the *direction* a number moves after a change, and whether it agrees with what your eyes see in the live app. Treat any specific score I mention as illustrative, not a target.
 
 ## What the loop is
 
@@ -11,21 +13,15 @@ run the eval
   → form a theory about why they disagree
   → make ONE focused change
   → run the eval again
-  → did the number move? did the product look better? did one move and not the other?
+  → did the number move? did the product look better?
   → repeat
 ```
 
-The whole job is staying honest about what each iteration actually changed. The first theory is wrong more than half the time. That is fine. The eval points at the wrong theory and the next attempt gets closer. The trap is making three changes at once and then having no idea which one moved the score.
+The whole job is staying honest about what each iteration actually changed. The first theory is wrong more than half the time. The trap is making three changes at once and then having no idea which one moved the score.
 
 ## Where we start
 
-Three scorer files have been sitting in `evals/scorers/` since lesson 7, written but never wired into the eval registration. They were always going to be needed once visual quality became the subject, and that is what this lesson is about. Open them and read the header comments first:
-
-- `evals/scorers/boundLabels.ts` measures whether each container shape has a text element with `containerId` pointing back at it
-- `evals/scorers/boundArrows.ts` measures whether each arrow has both `startBinding` and `endBinding` set to ids that exist in the output
-- `evals/scorers/connectivity.ts` measures whether shapes in connectivity prompts (the user said "flow", "sequence", "between") are reachable through the arrow graph
-
-Wire all three into `evals/diagram.eval.ts`:
+Three scorer files have been sitting in `evals/scorers/` since lesson 7, written but never registered. Wire them into `evals/diagram.eval.ts`:
 
 ```ts
 import { boundLabelsScorer } from "./scorers/boundLabels";
@@ -45,50 +41,28 @@ scores: [
 ],
 ```
 
-Run the eval:
-
 ```bash
 npm run eval
 ```
 
-The Braintrust summary now reports BoundArrows, BoundLabels, and Connectivity alongside the lesson 7 scorers. Most of those numbers will look fine. The lesson is going to show that two of them are lying.
+Most numbers look fine. The lesson is going to show that two of them are lying.
 
-## Iteration 1: the eval is lying (it just looks fine)
+## Iteration 1: the simulator is lying
 
-Open the live app in the browser, ask the agent for "a diagram showing how jwts work", and look at the canvas.
+**Hypothesis:** the live canvas is broken and the eval thinks it isn't.
 
-The diagram has boxes. The boxes are empty. There is no text inside any of them. The arrows are there, but every label is missing.
+Open the live app, ask for "a diagram showing how jwts work", and look at the canvas. Boxes are empty. Arrows have no labels. Now look at `BoundLabels` in the Braintrust summary. It says the agent labels its boxes most of the time. Your eyes say none of the time. Both cannot be true.
 
-Now look back at the BoundLabels score in the Braintrust summary. That number says the agent labels its boxes most of the time. The eyes say the agent labels its boxes none of the time. Both cannot be true.
+The eval is wrong before the agent is wrong. Two layers of lie:
 
-**Plan:** before changing anything in the agent, figure out why the eval and the canvas disagree. Read `evals/scorers/boundLabels.ts` and trace what it actually measures. Then read how the agent's output gets fed to the scorer.
+1. The schema in `src/tools/element-schema.ts` teaches the model `containerId` / `startBinding` / `endBinding`. Those are the *runtime* field names that exist after Excalidraw renders. The `convertToExcalidrawElements` helper actually wants `label: { text }` and `start: { id }` / `end: { id }` as *input*. The helper silently drops the runtime field names. The canvas renders unbound, unlabeled shapes.
+2. The eval simulator skips the helper entirely. `runAgent`'s `addElements` execute spreads the model's raw input straight into `sim`, so the scorer reads model claims and credits them as rendered output.
 
-The trail leads to two places:
+**An eval simulator must produce the same data the live renderer produces, or the scorer is measuring a fiction.**
 
-1. **The schema teaches the wrong vocabulary.** `src/tools/element-schema.ts` defines arrow bindings as `startBinding` / `endBinding` and labels as `containerId` on a separate text element. Those are the *runtime* field names that exist on Excalidraw elements after they are rendered. They are NOT the field names that the `convertToExcalidrawElements` helper consumes when it produces those runtime elements. The helper wants `start: { id }` / `end: { id }` and `label: { text }` directly on the shape. When the agent emits the runtime field names the helper silently drops them. The live canvas has unbound arrows and unlabeled boxes.
+### Fix the schema first
 
-2. **The eval simulator does not run the helper at all.** Look at `src/agent-core.ts` in `runAgent`'s `addElements` execute:
-
-   ```ts
-   execute: async ({ elements }) => {
-     for (const el of elements) sim.push({ ...(el as object) });
-     return { elements };
-   },
-   ```
-
-   The simulator spreads the model's raw input into a flat array. The `BoundLabels` scorer reads that flat array and finds `containerId` set on the model's text elements. It credits the agent for labels that the live canvas would never actually render. **The eval is grading model claims, not rendered output.**
-
-This is the most important point in the lesson. *An eval simulator must produce the same data the live renderer produces, or the scorer is measuring a fiction.*
-
-### Make the change
-
-Two fixes, applied in this order so the score movement tells a clean story.
-
-**First,** rewrite the schema to match what `convertToExcalidrawElements` actually consumes. Drop `containerId`, `startBinding`, `endBinding`, `points`. Add `label: { text }` on shapes and `start: { id }` / `end: { id }` on arrows. Make it a `z.union` of per type variants so the model literally cannot put a label on an arrow or a binding on a rectangle.
-
-Use `z.union`, not `z.discriminatedUnion`. The latter compiles to JSON Schema `oneOf`, which OpenAI strict mode rejects with `Invalid schema for function 'addElements': 'oneOf' is not permitted`. `z.union` compiles to `anyOf`, which strict mode accepts. The model still picks the right branch by the `type` literal.
-
-**`src/tools/element-schema.ts`** (full rewrite):
+Rewrite `src/tools/element-schema.ts` as a `z.union` of per type variants so the model literally cannot put a label on an arrow or a binding on a rectangle. Use `z.union`, not `z.discriminatedUnion`: the discriminated form compiles to JSON Schema `oneOf`, which OpenAI strict mode rejects. `z.union` compiles to `anyOf`.
 
 ```ts
 import { z } from "zod";
@@ -175,17 +149,85 @@ export const elementSchema = z.union([
 ]);
 ```
 
-Update the `addElements` tool description and the `agent-core.ts` system prompt to use the new vocabulary (`label.text`, `start.id`, `end.id`). Update `App.tsx`'s `stripNulls` to recurse into nested objects so `label: { fontSize: null }` does not choke the helper.
+Update the `addElements` description so the example matches the new vocabulary:
 
-Run the eval.
+```ts
+export const addElements = tool({
+  description: `Add new elements to the canvas. Use this for creating diagrams or adding to an existing one. Each element needs an id, type, position, and size.
 
-Every visual scorer collapses to near zero. **This is the proof.** The live canvas got better and the eval got worse. The eval was lying in both directions: it was lying high before, and it is lying low now. Switch over to the live app and look at the canvas. The boxes are labeled. The arrows are bound. The product is healthier than it has ever been. The number is wrong.
+To label a shape, set the shape's \`label\` field. Excalidraw centers the text inside the box automatically. Do NOT create a separate text element to label a shape. Standalone text elements are for floating annotations only.
 
-**Second,** fix the simulator. Write a small node safe helper that mimics what `convertToExcalidrawElements` does for the fields the scorers care about: take `label: { text }` on a shape and produce a synthetic child text element with `containerId` plus `boundElements` on the parent. Take `start: { id }` / `end: { id }` on an arrow and produce `startBinding` / `endBinding` with `focus: 0` and `gap: 8`.
+To connect two shapes with an arrow, set \`start: { id: ... }\` and \`end: { id: ... }\` on the arrow. The shapes must exist in the same call or already be on the canvas.
 
-`@excalidraw/excalidraw` cannot be imported in node directly (it has a transitive dependency on `roughjs` whose `package.json` exports map breaks ESM resolution). The helper has to be hand written. The full implementation is short:
+Example: addElements({ elements: [
+  { type: "rectangle", id: "rect_start", x: 100, y: 100, width: 200, height: 80, label: { text: "Start" } },
+  { type: "rectangle", id: "rect_end",   x: 380, y: 100, width: 200, height: 80, label: { text: "End" } },
+  { type: "arrow",     id: "arrow_start_end", x: 300, y: 140, width: 80, height: 0, start: { id: "rect_start" }, end: { id: "rect_end" } }
+]})`,
+  inputSchema: z.object({
+    elements: z.array(elementSchema).describe("Array of new elements to add to the canvas"),
+  }),
+  strict: true,
+});
+```
 
-**`src/context/applySkeleton.ts`**:
+Update the two vocabulary rules in the `agent-core.ts` system prompt:
+
+```ts
+// 1. **Label shapes via the `label` field on the shape itself.** To put text
+//    inside a rectangle, ellipse, or diamond, set the shape's
+//    `label: { text: "..." }` field. Do NOT create a separate text element
+//    for shape labels. Standalone text elements are for floating annotations
+//    only.
+// 2. **Every connecting arrow must bind both ends.** An arrow that connects
+//    two shapes MUST set `start: { id: "..." }` to one shape's id and
+//    `end: { id: "..." }` to the other shape's id. The shapes must exist in
+//    the same call or already be on the canvas. Arrows without both bindings
+//    float free in space and are a bug.
+```
+
+And the matching DON'Ts and the worked example in the same prompt:
+
+```ts
+// - Do NOT create a separate text element to label a shape. Use the shape's
+//   `label` field. A free floating text element placed visually on top of a
+//   box is NOT a label and will not move with the box.
+// - Do NOT create arrows for shape to shape connections without setting
+//   `start` and `end`.
+// - Do NOT create arrows where one or both endpoints reference an id that
+//   doesn't exist in this call or on the canvas. The arrow will float.
+
+// Worked example. User: "draw a User -> API -> Database flow." Five elements:
+// 1. rect_user rectangle at (100, 100) 200x80, label.text="User"
+// 2. rect_api  rectangle at (380, 100) 200x80, label.text="API"
+// 3. rect_db   rectangle at (660, 100) 200x80, label.text="Database"
+// 4. arrow_user_api arrow with start.id="rect_user", end.id="rect_api"
+// 5. arrow_api_db   arrow with start.id="rect_api",  end.id="rect_db"
+```
+
+Make `App.tsx`'s `stripNulls` recursive so nested null fields like `label: { fontSize: null }` don't choke the helper:
+
+```ts
+function stripNulls(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stripNulls);
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (v !== null) out[k] = stripNulls(v);
+    }
+    return out;
+  }
+  return value;
+}
+```
+
+Run the eval. The visual scorers should drop hard, possibly to near zero, possibly just a sharp dip. Whatever the magnitude, **the direction is the proof.** The live canvas just got better and the eval just got worse. The eval was lying high before. Now it might be lying low. Switch to the live app and confirm the boxes are labeled and the arrows are bound. The product is healthier than it has ever been. The number is wrong.
+
+### Then fix the simulator
+
+Hand write a node safe helper that mimics what `convertToExcalidrawElements` does for the fields the scorers care about. We can't import `@excalidraw/excalidraw` in node directly (transitive `roughjs` ESM resolution breaks).
+
+`src/context/applySkeleton.ts`:
 
 ```ts
 type SkeletonElement = Record<string, unknown>;
@@ -263,8 +305,6 @@ export function applySkeleton(skeletons: SkeletonElement[]): RuntimeElement[] {
 }
 ```
 
-Wire it into `runAgent`'s `addElements` execute:
-
 ```ts
 import { applySkeleton } from "./context/applySkeleton";
 
@@ -281,37 +321,26 @@ addElements: tool({
 }),
 ```
 
-Run the eval again. Every visual scorer recovers. `BoundArrows` lands above its original baseline because the new schema structurally enforces `start` / `end` on every arrow. `BoundLabels` lands roughly where it started numerically — but **the meaning is completely different**. The old number was a lie. The new number is honest. Same digits, totally different ground truth. A scorer's value is only as trustworthy as the parity between the eval simulator and the live renderer.
+Run the eval. The visual scorers should recover. `BoundArrows` will likely land at or above its old baseline because the new schema structurally enforces `start` / `end`. `BoundLabels` should land somewhere close to where it started, but the meaning is now completely different. Possibly the same digits, totally different ground truth. **A scorer's value is only as trustworthy as the parity between the eval simulator and the live renderer.**
 
-## Iteration 2: tighten the label requirement (a negative result)
+## Iteration 2: the obvious fix isn't always the right fix
 
-`BoundLabels` is honest but not perfect. The model still fails to label some shapes. The schema makes `label` nullable so the model can omit it. The obvious fix is to make `label` non nullable so the model literally cannot emit a container without a label.
+**Hypothesis:** the model still ships unlabeled shapes because the schema lets it. Drop `.nullable()` on `label` and add a system prompt rule: every container MUST have a non empty `label.text`.
 
-**Plan:** make `label: labelSchema` (drop the `.nullable()`) on the three container shapes. Strengthen the system prompt to say "every container shape MUST have a non empty label.text."
+Apply the change. Run the eval. The score does not move.
 
-Apply the change. Run the eval.
+Add a temporary `console.log` in `boundLabels.ts` to dump the unlabeled shapes per case. Run again. Two patterns surface:
 
-The score does not move. This is more useful than a clean win, because the next step is figuring out why the obvious fix did nothing. Add a temporary `console.log` to `boundLabels.ts` to dump the unlabeled shapes from each test case. Run the eval one more time and read the output.
-
-Two patterns surface:
-
-1. **Modify cases hallucinate scaffolding.** Test cases like `modify-01` ("make the login box red") have `seed.elements: []`. The model has no canvas to read from, so it creates `rect_login` and `rect_db` from scratch with `label: { text: "" }` to set up the scene before "modifying" them. Empty string passes the schema. `applySkeleton` drops empty text labels (the `text.length > 0` check) and the shape lands in `sim` with no child text element. The schema enforcement worked, the scorer is reading correctly, and the failure is in the dataset.
-
+1. **Modify cases hallucinate scaffolding.** `modify-01` ("make the login box red") has `seed.elements: []`. The model has no canvas to read from, so it conjures `rect_login` and `rect_db` with `label: { text: "" }` to set up the scene before "modifying" them. Empty string passes the schema. `applySkeleton` drops empty labels. The shape lands in `sim` with no child text. The schema enforcement worked. The scorer reads correctly. The failure is in the dataset.
 2. **Sequence diagram lifelines are intentionally unlabeled rectangles.** The system prompt teaches lifelines as 4px wide tall rectangles WITHOUT labels (the actor box above carries the label). The rule "every container must have a label" has a legitimate exception. The schema cannot encode "rectangles labeled as lifelines are exempt."
 
-**Revert the schema and prompt change.** Do not be precious about it. This iteration is more valuable as a documented negative result than as a forced positive one. The lesson is: the obvious fix is not always the right fix, and the schema is not always the right place to enforce a rule. Some rules belong in the dataset. Some rules have legitimate exceptions and need a per case scorer carve out instead.
-
-Iteration 4 comes back to the modify case dataset bug.
+Revert the schema and prompt change. **A negative result that explains itself is more valuable than a forced positive one.** The fix for the dataset bug lives in iteration 4. The lifeline exception stays unsolved here because the schema is the wrong place to encode it.
 
 ## Iteration 3: a layout scorer and an in loop feedback signal
 
-Run the live app. Ask for a JWT diagram with several boxes. The boxes are now labeled, but they overlap each other and the labels collide. The eval does not know about layout because nothing has measured it.
+**Hypothesis:** the eval doesn't measure layout, so the model has no pressure to avoid overlapping shapes. Add a `noOverlaps` scorer AND return the same overlap pairs from `addElements` so the agent can self correct without another `queryCanvas` round trip.
 
-**Plan:** add a `noOverlaps` scorer that detects intersecting elements. Same finding gets returned in the `addElements` tool result so the agent loop sees collisions immediately and can self correct via `updateElements` without a separate `queryCanvas` round trip.
-
-Single shared implementation in `src/context/overlaps.ts` so the agent feedback signal and the eval scorer measure exactly the same thing. If they drifted there would be the worst of both worlds: an agent that addressed one signal but the eval still flagged it.
-
-**`src/context/overlaps.ts`** (the meat of it):
+Single shared implementation in `src/context/overlaps.ts` so the agent and the eval measure the same thing. If they drifted there would be the worst of both worlds: an agent that addressed one signal but the eval still flagged it.
 
 ```ts
 const EPSILON = 4;
@@ -351,13 +380,11 @@ export function findOverlaps(elements) {
 
 Carve outs to think about up front:
 
-1. Arrow and line elements: their paths legitimately cross shapes when routing between them. Skip them.
-2. Container labels (text element bound to a rectangle/ellipse/diamond): the label is supposed to sit inside the shape. Skip them.
-3. **Arrow labels** (text bound to an arrow or line): these sit ALONG the path, NOT inside anything. They can collide. *Do not skip them.* Iteration 5 catches this when the first carve out gets it wrong.
+1. Arrows and lines: their paths legitimately cross shapes when routing. Skip them.
+2. Container labels (text bound to a rectangle/ellipse/diamond): supposed to sit inside the parent. Skip them.
+3. **Arrow labels** (text bound to an arrow or line): sit ALONG the path, NOT inside anything, and routinely collide. *Do not skip them.* Iteration 5 catches this when the first carve out gets it wrong.
 
-The scorer:
-
-**`evals/scorers/noOverlaps.ts`**:
+`evals/scorers/noOverlaps.ts`:
 
 ```ts
 import { findOverlaps, countOverlapEligiblePairs } from "../../src/context/overlaps";
@@ -380,79 +407,76 @@ export const noOverlapsScorer = ({ output }) => {
 };
 ```
 
-Register it in `evals/diagram.eval.ts`. Wire `findOverlaps` into:
+Wire `findOverlaps` into `runAgent`'s `addElements` execute (return `{ added, overlaps }`), `App.tsx`'s `addElements` client handler, and `serializeCanvasState` so `queryCanvas` reports overlaps. Add a behavioral rule to the system prompt:
 
-- `runAgent`'s `addElements` execute, returning `{ added, overlaps }`
-- `App.tsx`'s `addElements` client handler, also returning `{ added, overlaps }`
-- `serializeCanvasState` so `queryCanvas` reports overlaps in its summary
+> **Act on overlap feedback.** Every `addElements` result includes an `overlaps` array listing pairs of element ids whose bounding boxes collide. If `overlaps` is non empty after a call, the next action MUST be one or more `updateElements` calls that move the offending elements apart.
 
-Add a behavioral rule to the system prompt:
+Run the eval. `NoOverlaps` should land high, possibly very high. The existing dataset cases are mostly small and clean, so there is not much layout pressure. Iteration 4 changes that.
 
-> **Act on overlap feedback.** Every `addElements` result includes an `overlaps` array listing pairs of element ids whose bounding boxes collide on the canvas. If `overlaps` is non empty after a call, the next action MUST be one or more `updateElements` calls that move the offending elements apart. Do not leave overlaps in the final layout.
+Open the live app and ask for several connected boxes. The chat panel should show `addElements` followed by `updateElements` cycles. The agent is reading the overlap pairs and acting on them.
 
-Run the eval. `NoOverlaps` lands in the high 90s. Most existing dataset cases are small and clean enough that they do not stress layout much. Iteration 4 changes that.
+## Iteration 4: bigger defaults, honest dataset
 
-The agent feedback signal does not show up as a number on the eval but it does show up in the live app. Open the chat panel and ask for a diagram with several connected boxes. The chat should show `addElements` followed by `updateElements` for any prompt that produces overlapping boxes. The model is reading the overlap pairs and acting on them.
+**Hypothesis A:** the default rectangle in the system prompt is 200x80, too narrow for two word labels like "Auth Server." Bump the defaults in `agent-core.ts`:
 
-## Iteration 4: bigger defaults and a bigger dataset
+```ts
+// - Standard rectangle: 240x100 (wide enough for two word labels like "Auth Server")
+// - Standard ellipse / diamond: 140x140
+// - Horizontal stride between adjacent nodes: 320px
+// - Vertical stride between adjacent rows: 180px
+//
+// For a row of N nodes left to right: x = 100, 420, 740, 1060, 1380.
+// For a column of N nodes top to bottom: y = 100, 280, 460, 640.
+```
 
-Two compounding problems:
+**Hypothesis B:** the dataset is the lie this time. Two specific bugs in `evals/datasets/golden.json`:
 
-1. The default rectangle size in the system prompt is 200x80, which is too narrow for two word labels like "Auth Server."
-2. The dataset has 23 cases, mostly small/clean. `NoOverlaps` is high partly because there is not much layout pressure to begin with.
+- The four `modify-*` cases ship seeds in the OLD vocabulary (`text: "Login"` directly on a rectangle). The simulator pushes seed shapes straight into `sim` unchanged, so those seed shapes count against `BoundLabels` forever. This is what iteration 2 found and deferred.
+- 23 cases, mostly small. `NoOverlaps` is high partly because nothing stresses layout.
 
-**Plan:** bump the default sizing in the system prompt to 240x100 standard rectangle, 320px horizontal stride, 180px vertical stride. Then expand the golden dataset with cases that genuinely stress layout: long labels, sequence diagrams with many actors, ER diagrams, state machines, plus an explicit tight grid case that should NOT trip `NoOverlaps` (validates the 4px epsilon carve out).
+Update the dataset directly. Each modify seed gets rewritten in runtime form:
 
-While editing the dataset, fix the modify case seeds discovered in iteration 2. The current seeds use the OLD vocabulary (`text: "Login"` directly on rectangles) which the simulator pushes into `sim` unchanged, so the seed shapes count against `BoundLabels` forever. Rewrite each seed in runtime form (each labeled rect becomes a rect with `boundElements` plus a child text element with `containerId`, each connecting arrow becomes an arrow with `startBinding` / `endBinding`).
-
-A small migration script handles both at once:
-
-**`scripts/update-golden.mjs`**:
-
-```js
-function labeledRect(rect) {
-  const childId = `${rect.id}_label`;
-  const shape = { ...rect };
-  delete shape.text;
-  shape.boundElements = [{ id: childId, type: "text" }];
-  const child = {
-    id: childId,
-    type: "text",
-    x: rect.x, y: rect.y, width: rect.width, height: rect.height,
-    text: rect.text,
-    containerId: rect.id,
-  };
-  return [shape, child];
-}
-
-function boundArrow(arrow, startId, endId) {
-  return {
-    ...arrow,
-    startBinding: { elementId: startId, focus: 0, gap: 8 },
-    endBinding: { elementId: endId, focus: 0, gap: 8 },
-  };
+```json
+{
+  "id": "rect_login",
+  "type": "rectangle",
+  "x": 100, "y": 100, "width": 200, "height": 80,
+  "boundElements": [{ "id": "rect_login_label", "type": "text" }]
+},
+{
+  "id": "rect_login_label",
+  "type": "text",
+  "x": 100, "y": 100, "width": 200, "height": 80,
+  "text": "login",
+  "containerId": "rect_login"
 }
 ```
 
-Use these helpers to rewrite the four modify cases, then append the new layout stress cases (`create-architecture-jwt`, `create-sequence-oauth`, `create-flowchart-deploy`, `create-erd-blog`, `create-state-machine-order`, `create-long-labels`, `create-three-word-labels`, `create-tight-grid`). Read the script in the repo for the full list.
+Connecting arrows in the seed get explicit bindings:
 
-Run the eval. `BoundLabels` jumps significantly because the modify seeds were structurally guaranteed to fail before. `NoOverlaps` holds even though the dataset is now substantially larger and includes explicit layout stress cases, which means the bigger sizing defaults are doing real work, not just clearing easy cases.
+```json
+{
+  "id": "arrow_1",
+  "type": "arrow",
+  "x": 300, "y": 140, "width": 200, "height": 0,
+  "startBinding": { "elementId": "rect_login", "focus": 0, "gap": 8 },
+  "endBinding":   { "elementId": "rect_db",    "focus": 0, "gap": 8 }
+}
+```
 
-This is the lesson reinforcing itself: **a scorer can only catch what the dataset stresses.** Iteration 1 was about the eval simulator lying. This iteration is about the dataset lying. Same shape of bug, different layer.
+Then add eight new layout stress cases: `create-architecture-jwt`, `create-sequence-oauth`, `create-flowchart-deploy`, `create-erd-blog`, `create-state-machine-order`, `create-long-labels`, `create-three-word-labels`, `create-tight-grid`. The tight grid case is deliberately packed and should NOT trip `NoOverlaps`, which validates the 4px epsilon carve out.
 
-## Iteration 5: smoke test the live app and find another lie
+Run the eval. `BoundLabels` should move up because four cases that were structurally guaranteed to fail are now passing. `NoOverlaps` should ideally hold close to where it was, even though the dataset is substantially larger and explicitly stresses layout. If it does, the bigger sizing defaults are doing real work and not just clearing easy cases. If it dips, that is also useful information: the new stress cases found pressure the old dataset never had. Your numbers will not match mine. Direction is what matters.
 
-`NoOverlaps` is at 100%. The eval thinks layout is solved.
+**A scorer can only catch what the dataset stresses.** Iteration 1 was the simulator lying. This iteration is the dataset lying. Same shape of bug, different layer.
 
-Open the live app. Ask the agent for "a diagram showing how jwts work". Look at it.
+## Iteration 5: smoke test the live app, find another lie
 
-`API / Resource Server` overflows its box. Arrow labels collide near the central node. There is a free floating annotation block at the bottom. Multiple shapes are visually overlapping if you look closely.
+`NoOverlaps` is at or near 100%. The eval thinks layout is solved.
 
-The eval said 100%. The eyes say no.
+Open the live app. Ask for "a diagram showing how jwts work". `API / Resource Server` overflows its box. Arrow labels collide near the central node. Free floating annotation block at the bottom. The eval said 100%. Your eyes say no.
 
-**Plan:** open `src/context/overlaps.ts` and re read the carve outs. The scorer skips bound text labels (text element with `containerId` set) without checking what KIND of element the container is. Container labels (text inside a rectangle) are intentionally inside their parent and should be skipped. Arrow labels (text along the path of an arrow) are NOT inside anything visually and routinely collide. The carve out is wrong.
-
-Distinguish them:
+**Hypothesis:** the carve out for bound text labels is too broad. The scorer skips any text element with `containerId` set, regardless of what KIND of element the parent is. Container labels (text inside a rectangle) are supposed to sit inside their parent. Arrow labels (text along an arrow path) are NOT inside anything and routinely collide.
 
 ```ts
 function isContainerLabel(el, typeById) {
@@ -463,41 +487,51 @@ function isContainerLabel(el, typeById) {
 }
 ```
 
-A label whose parent is a `rectangle` / `ellipse` / `diamond` is exempt. A label whose parent is an `arrow` / `line` is checked. While editing the file, also tighten the system prompt:
+While editing, tighten the system prompt with two new rules:
 
-- Add a sizing heuristic: `width = max(240, 14 * label_text_length)`. The default of 240 fits about two short words; longer labels need more room and the model has to size up.
-- Add an arrow label spacing rule: when arrow labels are present, stride at least 400px and prefer SHORT labels ("login") over long ones ("1. send login request to auth server").
+```ts
+// **Sizing for long labels.** The default 240px width fits about two short
+// words. For longer labels you MUST widen the shape and stretch the stride
+// to match. Heuristic: `width = max(240, 14 * label_text_length)`. A label
+// like "API / Resource Server" is 21 characters, so width = max(240, 294)
+// = 294. When you widen a shape, also push every shape to its right by the
+// same amount so the layout stays clean.
 
-Run the eval. `NoOverlaps` drops slightly. Several test cases now show small overlap penalties that the broken carve out was hiding. **The score going down is the right direction.** The product did not get worse — the measurement got more honest.
+// **Spacing for arrow labels.** Numbered messages like "1. Login request"
+// sit on the arrow midpoint and extend in both directions. If you have
+// arrow labels and your nodes are only 320px apart, the labels will collide
+// with each other and with the boxes. For diagrams with arrow labels,
+// increase the horizontal stride to at least 400px and prefer SHORT arrow
+// labels ("login", "verify") over long ones ("1. send login request to
+// auth server").
+```
 
-Re run the live app smoke test. The diagram is dramatically better: every label fits inside its box, no annotation block at the bottom, layout is clean enough that the residual issues only show up on the most complex diagrams. Check the chat panel: `addElements` should be followed by `updateElements` cycles, which means the agent received the overlap feedback signal and used it to reposition shapes.
+Run the eval. `NoOverlaps` may drop slightly because cases that were hidden by the broken carve out are now visible. **If the score goes down, that is the right direction.** The product did not get worse. The measurement got more honest.
 
-There is one bug class left where three arrows fan into the same central node and their midpoint labels cluster on top of each other. Resolving that needs either more agent steps or a smarter feedback signal that suggests specific moves rather than just listing colliding pairs. Both are out of scope for this lesson.
+Re run the live smoke test. Every label fits inside its box. Chat shows `addElements` followed by `updateElements` cycles, which confirms the agent is consuming the overlap signal. One bug class left: three arrows fanning into the same node still cluster their labels. That needs more agent steps or a smarter feedback signal. Out of scope for this lesson.
 
 ## What this lesson actually taught
 
-Five iterations. Three of them were about the eval lying in different ways: the simulator (iteration 1), the dataset (iteration 4), and the scorer carve outs (iteration 5). Every layer of the eval got made honest at least once. There was also one negative result that got reverted and one improvement that did not show up as a number but did show up in the live product.
+Five iterations. Three of them were about the eval lying in different ways: the simulator (iteration 1), the dataset (iterations 2 and 4), and the scorer carve outs (iteration 5). Every layer of the eval got made honest at least once.
 
 The pattern that holds across every iteration:
 
 1. Run the eval.
-2. Compare the numbers to the live product.
-3. When they disagree, the eval is wrong first. Almost always. The scorer, the simulator, the dataset, or the assumption about what the model actually does — one of those is the lie. Find the lie and fix it BEFORE changing the agent.
-4. Once the eval and the product agree, propose a change to the agent (schema, prompt, tool result, dataset).
+2. Compare numbers to the live product.
+3. When they disagree, the eval is wrong first. Almost always. Find the lie BEFORE changing the agent.
+4. Once eval and product agree, propose a change to the agent.
 5. Make ONE change. Re run.
 6. If the number moved in the direction expected, commit and write down what was learned.
-7. If the number moved the wrong way or did not move at all, the lie was somewhere else. Go back to step 3.
+7. If it moved the wrong way or did not move at all, the lie was somewhere else. Go back to step 3.
 
 This is the loop. Every lesson after this one is just another turn of it. RAG is "the agent does not know enough domain facts, plan a retrieval system, measure whether retrieval moved the score." Human in the loop is "the agent is making destructive choices unsupervised, plan an approval flow, measure whether trust scores moved." Agent architectures is "the agent gets stuck in single step thinking, plan a planning step, measure whether complex diagram scores moved." Same loop, different lever.
 
 ## One helper that ships pre built
 
-`src/context/cross-call-bindings.ts` already exists in the repo. It is not part of the lesson — students do not write it during the workshop. It patches arrow bindings after `convertToExcalidrawElements` runs, because the helper only resolves arrow start/end ids against elements in its own input batch. When the agent splits a diagram across multiple `addElements` calls the second call's arrows lose their bindings to shapes from the first call. The util walks the new skeleton input and restores those bindings against `api.getSceneElements()`. Plumbing around an Excalidraw limitation, not interesting for the lesson.
-
-The file is short, well commented, and reads top to bottom in a few minutes for anyone who wants to know how it works.
+`src/context/cross-call-bindings.ts` already exists in the repo and is not part of the lesson. It patches arrow bindings after `convertToExcalidrawElements` runs, because the helper only resolves arrow start/end ids against elements in its own input batch. When the agent splits a diagram across multiple `addElements` calls, the second call's arrows lose bindings to shapes from the first call. The util walks the new skeleton input and restores those bindings against `api.getSceneElements()`.
 
 ## Known issues to expect
 
-`@cloudflare/ai-chat` 0.3.2 has three React errors that fire in the dev console: a `Maximum update depth exceeded` from the WebSocket message handler, a `duplicate key` warning from messages with the same id, and a `TypeError: Cannot read 'state' of undefined` at `Chat.makeRequest`. They reproduce on every commit on this branch and on the previous lesson 7 commits. They do not break the chat UI but they make the dev console noisy. See `KNOWN_ISSUES.md` at the repo root for details and possible workarounds.
+`@cloudflare/ai-chat` 0.3.2 has three React errors that fire in the dev console: a `Maximum update depth exceeded` from the WebSocket message handler, a `duplicate key` warning, and a `TypeError: Cannot read 'state' of undefined` at `Chat.makeRequest`. They reproduce on this branch and on lesson 7. They do not break the chat UI. See `KNOWN_ISSUES.md` at the repo root.
 
-`convertToExcalidrawElements` also logs `No element for start binding with id rect_X found` warnings when arrows are added in a separate call from their endpoints. The cross call binding helper above patches the runtime arrows so the visual result is correct, but the helper logs the warning during processing before the patch runs. Functionally harmless, just dev console noise.
+`convertToExcalidrawElements` also logs `No element for start binding with id rect_X found` warnings when arrows are added in a separate call from their endpoints. The cross call binding helper above patches the runtime arrows so the visual result is correct. Functionally harmless.
