@@ -3,6 +3,9 @@ import { defineConfig } from "vitepress";
 export default defineConfig({
   title: "AI Engineering Fundamentals",
   description: "Course notes for the AI Engineering workshop",
+  // Lesson notes legitimately link to localhost:5173 (the dev server URL)
+  // and similar local addresses that vitepress can't resolve at build time.
+  ignoreDeadLinks: [/^https?:\/\/localhost/],
   themeConfig: {
     sidebar: [
       {
@@ -36,8 +39,11 @@ export default defineConfig({
             text: "07. Advanced Tool Use",
             link: "/07-advanced-tool-use/",
           },
-          { text: "08. RAG", link: "/08-rag/" },
-          { text: "09. Gen UI", link: "/09-gen-ui/" },
+          {
+            text: "08. The Improvement Loop",
+            link: "/08-the-improvement-loop/",
+          },
+          { text: "09. RAG", link: "/09-rag/" },
           {
             text: "10. Human in the Loop",
             link: "/10-human-in-the-loop/",

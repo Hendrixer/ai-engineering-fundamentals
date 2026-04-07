@@ -17,8 +17,9 @@ Benefits:
   - "The Eval Discipline: Write golden datasets, build automated scorers (code-based and LLM-as-judge), and run eval suites that catch regressions"
   - "Context Engineering: Master the emerging discipline of curating exactly the right tokens for your model at inference time"
   - "Advanced Tool Use: Implement sandboxed code execution, tool search for large tool libraries, and few-shot tool examples"
-  - "RAG: Add retrieval-augmented generation with Cloudflare Vectorize so your agent draws on real domain knowledge"
-  - "Streaming Chat UX: Build a React chat interface that handles streaming tokens, tool call status, generative UI, and human-in-the-loop flows"
+  - "The Improvement Loop: Practice the eval, plan, improve, repeat workflow on a real agent and watch the scores move"
+  - "RAG: Add retrieval-augmented generation with a vector store so your agent draws on real domain knowledge"
+  - "Streaming Chat UX: Build a React chat interface that handles streaming tokens, tool call status, and human-in-the-loop flows"
   - "Agent Architectures: Go beyond the basic agent loop with research-backed patterns like Observe-Predict-Update, multi-agent handoffs, and voting"
   - "The Data Flywheel: Capture user corrections as eval data and build feedback loops that make your agent better with every interaction"
 
@@ -184,31 +185,34 @@ Schedule:
 
   - 1115: "Break"
 
-  # Lesson 8 — RAG
-  #   Concept: When to use RAG vs context stuffing. Embeddings and
-  #   vector search with Cloudflare Vectorize. Chunking strategies.
-  #   Retrieval pipeline design. Adding domain knowledge so the agent
-  #   can suggest architecture patterns, AWS diagrams, etc.
-  #   Live code: Set up Vectorize. Embed a corpus of diagram patterns
-  #   and architecture best practices. Add a retrieval tool to the
-  #   agent. Run evals — did domain-specific scores improve?
+  # Lesson 8 — The Improvement Loop
+  #   Concept: The eval -> plan -> improve -> repeat workflow as its
+  #   own subject. Walk through several measured iterations on the
+  #   agent: discover that the eval is lying, fix the eval, find the
+  #   real bugs, write scorers for them, fix the bugs, watch the
+  #   numbers move. The loop is the lesson. Subskills covered: eval
+  #   production parity, schema vocabulary mismatches, layout overlap
+  #   detection as both a scorer and an in loop feedback signal.
+  #   Live code: Run a baseline eval, diagnose a failing visual
+  #   scorer, refactor the schema, watch every visual scorer collapse,
+  #   discover the eval simulator was lying, fix it, watch them
+  #   recover honestly. Add an overlap scorer + a feedback signal
+  #   returned from addElements. Expand the golden dataset.
   #
-  - 1130: "RAG"
+  - 1130: "The Improvement Loop"
 
   - 1210: "Lunch"
 
-  # Lesson 9 — Gen UI
-  #   Concept: Generative UI — rendering rich, interactive tool
-  #   results instead of plain text. Diagram previews in the chat,
-  #   option cards for alternative layouts, streaming partial UI
-  #   updates, and interactive components. How to design tool
-  #   responses that map to React components.
-  #   Live code: Build Gen UI components for diagram previews and
-  #   option cards. Wire tool results to custom renderers. Add
-  #   streaming partial updates. Run evals — did UX quality scores
-  #   improve?
+  # Lesson 9 — RAG
+  #   Concept: When to use RAG vs context stuffing. Embeddings and
+  #   vector search. Chunking strategies. Retrieval pipeline design.
+  #   Adding domain knowledge so the agent can suggest architecture
+  #   patterns, AWS diagrams, etc.
+  #   Live code: Set up the vector store. Embed a corpus of diagram
+  #   patterns and architecture best practices. Add a retrieval tool
+  #   to the agent. Run evals — did domain-specific scores improve?
   #
-  - 1310: "Gen UI"
+  - 1310: "RAG"
 
   # Lesson 10 — Human-in-the-Loop
   #   Concept: When to pause and ask for human approval before the
@@ -217,7 +221,7 @@ Schedule:
   #   patterns in chat. Undo/redo integration. Building trust by
   #   giving users control.
   #   Live code: Add confirmation flow for destructive tool calls.
-  #   Build approval UI using Gen UI components from previous lesson.
+  #   Build approval UI as part of the chat panel for destructive tool calls.
   #   Implement undo integration. Run evals — did safety scores
   #   improve?
   #

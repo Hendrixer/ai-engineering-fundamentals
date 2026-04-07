@@ -101,7 +101,6 @@ Here is what the codebase looks like and what each piece does:
 │   │   ├── Canvas.tsx         # Excalidraw wrapper
 │   │   ├── chat/              # Chat panel components
 │   │   ├── streaming/         # Streaming text, tool status
-│   │   ├── gen-ui/            # Generative UI registry
 │   │   └── hitl/              # Human in the loop components
 ├── lessons/                   # Course notes (you are here)
 ├── evals/                     # Eval dataset (golden.json is pre populated, scorers added in lesson 5)
@@ -271,8 +270,6 @@ The `src/components/` directory also includes pre built components you will use 
 
 - **`streaming/StreamingText.tsx`** renders text as it arrives chunk by chunk (used in lesson 3)
 - **`streaming/ToolStatus.tsx`** shows tool call progress like "Drawing flowchart..." (used in lesson 3)
-- **`gen-ui/GenUIRegistry.tsx`** maps tool names to custom React components (used in lesson 9)
-- **`gen-ui/GenUIRenderer.tsx`** renders the right component for a tool result (used in lesson 9)
 - **`hitl/ConfirmationCard.tsx`** shows approve/reject buttons for destructive actions (used in lesson 10)
 - **`hitl/ApprovalStatus.tsx`** displays whether an action is pending, approved, or rejected (used in lesson 10)
 
