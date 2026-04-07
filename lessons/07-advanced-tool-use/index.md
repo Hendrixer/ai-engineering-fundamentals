@@ -132,54 +132,60 @@ The model only fetches canvas state when it actually needs to. Empty canvas + "d
 
 ## 4. Browser side: fulfill all four with onToolCall
 
+Two patterns to know up front:
+
+- **Return the output from `onToolCall`.** The AI SDK auto submits whatever you return as the tool result. Don't use the `addToolOutput` helper for this case. Returning is the standard path and it avoids re-entering the chat state machine, which causes infinite update loops with multiple client tools.
+- **Strip null fields before handing data to Excalidraw.** Our schemas use nullable rather than optional, so the agent always sends every field. Excalidraw expects `undefined` for "use the default," not `null`, and a `points: null` on a rectangle (or `startBinding: null` on a non arrow) will crash `convertToExcalidrawElements`.
+
+A small helper takes care of the second one:
+
+```ts
+function stripNulls(obj: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v !== null) out[k] = v;
+  }
+  return out;
+}
+```
+
 **`src/App.tsx`**:
 
 ```tsx
 const { messages, sendMessage, status } = useAgentChat({
   agent,
-  onToolCall: async ({ toolCall, addToolOutput }) => {
+  onToolCall: async ({ toolCall }) => {
     const api = excalidrawAPIRef.current;
-    if (!api) return;
+    if (!api) return { error: "canvas not ready" };
 
     if (toolCall.toolName === "queryCanvas") {
-      addToolOutput({
-        toolCallId: toolCall.toolCallId,
-        output: { summary: serializeCanvasState(api.getSceneElements() as unknown[]) },
-      });
-      return;
+      return { summary: serializeCanvasState(api.getSceneElements() as unknown[]) };
     }
 
     if (toolCall.toolName === "addElements") {
-      const { elements } = toolCall.input as { elements: unknown[] };
+      const { elements } = toolCall.input as { elements: Record<string, unknown>[] };
+      const cleaned = elements.map(stripNulls);
       // regenerateIds: false so the agent's chosen ids survive.
-      const newOnes = convertToExcalidrawElements(elements as never, { regenerateIds: false });
+      const newOnes = convertToExcalidrawElements(cleaned as never, { regenerateIds: false });
       const next = [...api.getSceneElements(), ...newOnes];
       api.updateScene({ elements: next, captureUpdate: CaptureUpdateAction.IMMEDIATELY });
       api.scrollToContent(next, { fitToContent: true });
-      addToolOutput({ toolCallId: toolCall.toolCallId, output: { added: newOnes.length } });
-      return;
+      return { added: newOnes.length };
     }
 
     if (toolCall.toolName === "updateElements") {
       const { updates } = toolCall.input as {
         updates: { id: string; fields: Record<string, unknown> }[];
       };
-      // Strip nulls. Schema makes the model mention every field; only the
-      // non null ones should actually apply.
-      const byId = new Map(
-        updates.map((u) => {
-          const fields: Record<string, unknown> = {};
-          for (const [k, v] of Object.entries(u.fields)) if (v !== null) fields[k] = v;
-          return [u.id, fields];
-        })
-      );
+      const byId = new Map(updates.map((u) => [u.id, stripNulls(u.fields)]));
       const next = api.getSceneElements().map((el) => {
         const fields = byId.get(el.id);
-        return fields ? newElementWith(el, fields as never) : el;
+        return fields && Object.keys(fields).length > 0
+          ? newElementWith(el, fields as never)
+          : el;
       });
       api.updateScene({ elements: next, captureUpdate: CaptureUpdateAction.IMMEDIATELY });
-      addToolOutput({ toolCallId: toolCall.toolCallId, output: { updated: byId.size } });
-      return;
+      return { updated: byId.size };
     }
 
     if (toolCall.toolName === "removeElements") {
@@ -187,9 +193,10 @@ const { messages, sendMessage, status } = useAgentChat({
       const remove = new Set(ids);
       const next = api.getSceneElements().filter((el) => !remove.has(el.id));
       api.updateScene({ elements: next, captureUpdate: CaptureUpdateAction.IMMEDIATELY });
-      addToolOutput({ toolCallId: toolCall.toolCallId, output: { removed: remove.size } });
-      return;
+      return { removed: remove.size };
     }
+
+    return { error: `unknown tool: ${toolCall.toolName}` };
   },
 });
 ```
