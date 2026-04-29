@@ -7,7 +7,7 @@
     "dev": "vite dev",
     "build": "vite build",
     "preview": "vite preview",
-    "docs": "vitepress dev lessons",
+    "docs": "vitepress dev lessons --port=5170",
     "docs:build": "vitepress build lessons",
     "agent": "node scripts/test-agent.mjs",
     "eval": "tsx evals/run.ts"
