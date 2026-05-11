@@ -18,5 +18,5 @@
     "noUncheckedIndexedAccess": true
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],
-  "exclude": ["src/worker.ts"]
+  "exclude": ["src/worker.ts", "src/agents.ts"]
 }
