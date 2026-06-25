@@ -1,6 +1,6 @@
 # AI Engineering Fundamentals
 
-This is a companion repo for the [AI Engineering Fundamentals course on Frontend Masters](https://frontendmasters.com/courses/ai-engineering/). In this course, you build an agentic diagram design tool, then learn to evaluate and improve it using professional AI engineering practices.
+This is a companion repo for the [AI Engineering Fundamentals course on Master.dev](https://master.dev/courses/ai-engineering/). In this course, you build an agentic diagram design tool, then learn to evaluate and improve it using professional AI engineering practices.
 
 You build a Cloudflare Workers agent that controls an Excalidraw canvas through tool calls. Then you measure it with evals, and across the rest of the course you systematically improve it (context engineering, better tools, RAG, generative UI, human-in-the-loop, planning, data flywheel) and watch the eval scores move.
 
