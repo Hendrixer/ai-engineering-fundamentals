@@ -64,7 +64,7 @@ You can read them three ways:
 
 ```bash
 git clone <this repo url>
-cd intro-ai-engineering
+cd ai-engineering-fundamentals
 npm install
 ```
 
